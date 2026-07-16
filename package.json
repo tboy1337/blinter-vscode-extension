@@ -3,7 +3,7 @@
   "version": "1.26.38560",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
-  "description": "A powerful linter for Windows Batch files with real-time feedback and quick fixes (Core v1.0.112 @ 3564f35). Only supports Windows OS.",
+  "description": "A linter for Windows Batch files with real-time feedback and quick fixes",
   "displayName": "Blinter",
   "os": [
     "win32"
@@ -52,16 +52,6 @@
     "onDebug:blinter-debug"
   ],
   "main": "./extension.js",
-  "files": [
-    "extension.js",
-    "lib/**",
-    "icons/**",
-    "package.json",
-    "README.md",
-    "LICENSE",
-    "jsconfig.json",
-    "vendor/**"
-  ],
   "contributes": {
     "languages": [
       {

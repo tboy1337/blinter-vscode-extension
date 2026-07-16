@@ -6,7 +6,6 @@ All notable changes to this project are documented in this file.
 
 - new icon
 - fixed blinter output view
-- fixed qiuck fix
-- reverted .exe bundling
+- fixed quick fix
 - exposed more settings for `blinter-debug` and output view
 - fixed lauch config generation'

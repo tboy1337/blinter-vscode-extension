@@ -1,10 +1,8 @@
-# Strict packaging ignore: ignore everything except the minimal files needed at runtime
-
 # Ignore everything by default
 *
 **/**
 
-# Allow essential extension runtime files
+# runtime files
 !extension.js
 !package.json
 !jsconfig.json
@@ -12,16 +10,15 @@
 !lib/**
 !icons/**
 
-# Documentation and license to include in the package
+# Documentation 
 !README.md
 !LICENSE
 !CHANGELOG.md
 
-# Keep the prepared icons and other runtime assets
+# icons 
 !icons/**
 !vendor/**
 
-# Ensure the .vscodeignore itself isn't accidentally ignored by packaging tools
+# .vscodeignore itself 
 !.vscodeignore
 
-# Note: tests, node_modules, source ts files and CI configs remain ignored intentionally

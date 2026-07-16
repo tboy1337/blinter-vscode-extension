@@ -4,28 +4,31 @@ Blinter is a linter and debug companion for batch scripts (`.bat`, `.cmd`). It r
 
 ## At a glance
 
-- Windows only (`win32`)
-- Works with `.bat` and `.cmd`
 - Run and debug through `blinter-debug` (F5)
 - Quick fixes for suppression comments and command casing
 
-## Release notes summary
 
-- For user-facing changes, see [CHANGELOG.md](./CHANGELOG.md).
 
 ## Table of contents
 
-- [Installation](#installation)
-- [Quick start](#quick-start)
-- [Core features](#core-features)
-- [Commands](#commands)
-- [Configuration](#configuration)
-- [Suppression workflow](#suppression-workflow)
-- [Output and troubleshooting](#output-and-troubleshooting)
-- [Developer setup](#developer-setup)
-- [Testing](#testing)
-- [Packaging](#packaging)
-- [License](#license)
+- [Blinter for VS Code](#blinter-for-vs-code)
+  - [At a glance](#at-a-glance)
+  - [Table of contents](#table-of-contents)
+  - [Installation](#installation)
+    - [Option 1: Install from VSIX](#option-1-install-from-vsix)
+  - [Quick start](#quick-start)
+  - [Features](#features)
+  - [Commands](#commands)
+  - [Configuration](#configuration)
+    - [Linting behavior](#linting-behavior)
+    - [Presentation](#presentation)
+    - [Suppression comments](#suppression-comments)
+  - [Suppression workflow](#suppression-workflow)
+  - [Output and troubleshooting](#output-and-troubleshooting)
+  - [Developer setup](#developer-setup)
+  - [Testing](#testing)
+  - [Packaging](#packaging)
+  - [License](#license)
 
 ## Installation
 
@@ -36,22 +39,6 @@ Blinter is a linter and debug companion for batch scripts (`.bat`, `.cmd`). It r
 3. Select the `...` menu and choose `Install from VSIX...`.
 4. Select the VSIX file.
 
-### Option 2: Run from source (development)
-
-1. Clone this repository.
-2. Install dependencies:
-
-```powershell
-npm ci
-```
-
-3. Ensure vendor assets are present:
-
-```powershell
-.\setup-vendor.bat
-```
-
-4. Press `F5` in VS Code to launch Extension Development Host.
 
 ## Quick start
 
