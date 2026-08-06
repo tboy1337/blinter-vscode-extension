@@ -18,7 +18,7 @@ To give users full control, the extension must contribute the following settings
 blinter.enabled: A boolean to enable or disable the linter entirely.
 blinter.runOn: A string ("onSave" or "onType") to control when linting occurs.
 blinter.debounceDelay: A number (in milliseconds) for the onType delay.
-blinter.pythonPath: (deprecated) This extension now requires the native `blinter.exe` in `bin/` and does not use Python. Remove references to Python when packaging.
+blinter.pythonPath: (deprecated) This extension uses the native Blinter executable at `vendor/Blinter/Blinter.exe` and does not use Python.
 blinter.rulesPath: An optional string path to a custom rules.json file, allowing users to override the bundled rules.
 c. Rich UI Integration
 Activity Bar Icon & View: An icon should appear in the Activity Bar only when a .bat or .cmd file is active ("when": "resourceLangId == bat"). Clicking it opens a simple view containing the "Run Blinter" button.
@@ -165,7 +165,7 @@ Hover & Clickable Problem Display
   - PrepareForLaunch workflow:
     - Resolve `${file}` and workspace folders.
     - Validate target program exists.
-    - Locate `blinter.exe` in `bin/` or `bins/` (support versioned names like `Blinter-v1.0.94.exe`).
+    - Locate Blinter in `vendor/Blinter/Blinter.exe`, upstream installer path, `bin/` or `bins/` (versioned names like `Blinter-v1.0.x.exe`).
 
   Parsing and diagnostics
   ----------------------
@@ -234,9 +234,9 @@ Hover & Clickable Problem Display
 
   Run/test helper (recommended)
   -----------------------------
-  Create a batch helper `run_tests.bat` (not added here) with the contents below. Agents should run it via `cmd /c run_tests.bat` and capture the output.
+  Create a batch helper `run_tests.cmd` (not added here) with the contents below. Agents should run it via `cmd /c run_tests.cmd` and capture the output.
 
-  Contents for `run_tests.bat` (recommended):
+  Contents for `run_tests.cmd` (recommended):
 
     @echo off
     set LOGFILE=project_logs.log
@@ -248,8 +248,8 @@ Hover & Clickable Problem Display
     npm run test:integration >> %LOGFILE% 2>&1 || echo INTEGRATION_TESTS_FAILED >> %LOGFILE%
 
   Agent workflow for test runs (two options):
-  - Option A (agent can execute commands): run `cmd /c run_tests.bat`, wait for completion, then parse `project_logs.log` and append a `progress.txt` entry summarizing results. Clear or move `project_logs.log` after parsing.
-  - Option B (agent cannot run commands in environment): ask the user to run `cmd /c run_tests.bat` and upload/confirm `project_logs.log`. After the user confirms, parse and summarize into `progress.txt`.
+  - Option A (agent can execute commands): run `cmd /c run_tests.cmd`, wait for completion, then parse `project_logs.log` and append a `progress.txt` entry summarizing results. Clear or move `project_logs.log` after parsing.
+  - Option B (agent cannot run commands in environment): ask the user to run `cmd /c run_tests.cmd` and upload/confirm `project_logs.log`. After the user confirms, parse and summarize into `progress.txt`.
 
   Deliverables checklist (authoritative)
   -------------------------------------
@@ -257,13 +257,13 @@ Hover & Clickable Problem Display
   - [x] Refactor `extension.js` to register debug configuration, diagnostics, hover provider, decorations, and webview view provider.
   - [x] Update `package.json` with `blinter-debug` contribution and activation events.
   - [x] Implement quick fixes for common casing issues.
-  - [ ] Add `run_tests.bat` to automate log capture and test runs.
+  - [ ] Add `run_tests.cmd` to automate log capture and test runs.
   - [x] Document Run & Debug workflow and sample `launch.json` in `README.md` / `PACKAGING.md`.
 
   Notes and next actions (short)
   -----------------------------
   1. Ensure `progress.txt` exists and contains the most recent state before making changes.
-  2. Create `run_tests.bat` in the repo root (if automation is required) and update this file when completed.
+  2. Create `run_tests.cmd` in the repo root (if automation is required) and update this file when completed.
   3. Prefer `blinter-debug` as the canonical debug type across code and manifest.
 
   If anything in this file appears inconsistent with the repository, the source of truth is: the latest entry in `progress.txt` followed by this file. Agents should follow the `progress.txt` rules and then continue.

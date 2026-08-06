@@ -7,7 +7,7 @@ const { analyzeLine, buildVariableIndexFromFile } = require('../lib/analysis');
 
 describe('Analysis pipeline', () => {
   it('classifies bracketed output and flags critical issues', () => {
-    const defaultFile = path.join(__dirname, 'fixtures', 'variable-sample.bat');
+    const defaultFile = path.join(__dirname, 'fixtures', 'variable-sample.cmd');
     const issues = analyzeLine('[WARN] (BL001) -> unreachable code detected on line 10', {
       workspaceRoot: null,
       defaultFile,
@@ -23,10 +23,10 @@ describe('Analysis pipeline', () => {
   });
 
   it('tracks variable assignments and produces variable trace for undefined variables', () => {
-    const fixturePath = path.join(__dirname, 'fixtures', 'variable-sample.bat');
+    const fixturePath = path.join(__dirname, 'fixtures', 'variable-sample.cmd');
     const variableIndex = buildVariableIndexFromFile(fixturePath, fs);
 
-    const result = analyzeLine("variable-sample.bat:7: error: Undefined variable 'FOO'", {
+    const result = analyzeLine("variable-sample.cmd:7: error: Undefined variable 'FOO'", {
       workspaceRoot: path.dirname(fixturePath),
       defaultFile: fixturePath,
       variableIndex
@@ -38,7 +38,7 @@ describe('Analysis pipeline', () => {
     assert.strictEqual(issue.variableName, 'FOO');
     assert.ok(Array.isArray(issue.variableTrace));
     assert.ok(issue.variableTrace.length > 0);
-    assert.ok(issue.variableTrace[0].includes('variable-sample.bat'));
+    assert.ok(issue.variableTrace[0].includes('variable-sample.cmd'));
   });
 
   it('resolves relative file paths against workspace root', () => {
@@ -59,7 +59,7 @@ describe('Analysis pipeline', () => {
   });
 
   it('treats informational detailed codes as non-critical info issues', () => {
-    const defaultFile = path.join(__dirname, 'fixtures', 'variable-sample.bat');
+    const defaultFile = path.join(__dirname, 'fixtures', 'variable-sample.cmd');
     const issues = analyzeLine('Line 4: Prefer .cmd extension for modern systems (S007)', {
       workspaceRoot: null,
       defaultFile,

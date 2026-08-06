@@ -50,8 +50,8 @@ if (vscode) {
       let endIdx = startIdx;
       for (let i = startIdx; i < lines.length; i++) {
         for (const char of lines[i]) {
-          if (char === '{') braceCount++;
-          if (char === '}') braceCount--;
+          if (char === '{') {braceCount++;}
+          if (char === '}') {braceCount--;}
         }
         if (braceCount === 0 && i > startIdx) {
           endIdx = i;
@@ -88,10 +88,10 @@ if (vscode) {
 
       // Ensure extension is activated
       const ext = vscode.extensions.getExtension('14ag.blinter');
-      if (ext) await ext.activate();
+      if (ext) {await ext.activate();}
 
       // Use existing test file
-      const testFilePath = path.join(__dirname, '..', 'tmp', 'sample1.bat');
+      const testFilePath = path.join(__dirname, '..', 'tmp', 'sample1.cmd');
       
       if (!fs.existsSync(testFilePath)) {
         assert.fail(`Test file not found: ${testFilePath}`);

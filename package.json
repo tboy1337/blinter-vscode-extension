@@ -16,13 +16,14 @@
     "type": "git",
     "url": "https://github.com/14ag/blinter_vscode_extension"
   },
+  "license": "MIT",
   "categories": [
     "Linters",
     "Debuggers",
     "Other"
   ],
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.105.0"
   },
   "keywords": [
     "batch",
@@ -40,7 +41,7 @@
     {
       "command": "blinter.runAndDebug",
       "key": "F5",
-      "enablement": "resourceLangId == 'bat'"
+      "enablement": "resourceLangId == 'bat' || resourceLangId == 'cmd'"
     }
   ],
   "activationEvents": [
@@ -266,15 +267,27 @@
           "type": "boolean",
           "default": false,
           "description": "Show 'Ask Copilot' in Blinter quick fixes. Keep disabled to avoid duplicate Copilot Fix/Explain actions."
+        },
+        "blinter.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to Blinter executable. Relative paths resolve from the extension root."
+        },
+        "blinter.useSystemBlinter": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, resolve blinter.exe from PATH if bundled binary is not found."
         }
       }
     }
   },
   "scripts": {
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p jsconfig.json && tsc --noEmit -p jsconfig.tests.json",
     "pretest": "npm run lint",
     "test": "node ./test/runTest.js",
-    "test:unit": "mocha \"test/parser.test.js\" \"test/blinterRunner.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\" \"test/discovery.test.js\"",
+    "test:unit": "mocha \"test/parser.test.js\" \"test/blinterRunner.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\" \"test/discovery.test.js\" \"test/coverage.lib.test.js\" \"test/extension.unit.test.js\" \"test/extension.branches.test.js\"",
+    "test:coverage": "node ./tools/run-coverage.js",
     "test:integration": "node ./test/runTest.js",
     "test:smoke": "mocha \"test/smoke.test.js\"",
     "test:sanity": "mocha \"test/sanity.test.js\"",
@@ -286,18 +299,24 @@
     "test:uat": "node ./test/uat.runner.js",
     "test:matrix": "node ./tools/run-test-matrix.js",
     "prepare:icons": "node ./tools/generate-icons.js",
-    "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"
+    "package:vsix": "npm run prepare:icons && vsce package --out blinter.vsix",
+    "audit:dev": "npm audit --audit-level=high"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.90.0",
-    "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^2.1.0",
-    "eslint": "^9.36.0",
-    "fast-check": "^4.6.0",
-    "mocha": "^10.2.0",
-    "vsce": "^2.10.0"
+    "@types/vscode": "1.105.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "c8": "^12.0.0",
+    "eslint": "^9.39.5",
+    "fast-check": "^4.9.0",
+    "globals": "^16.5.0",
+    "mocha": "^11.8.0",
+    "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "diff": "^8.0.3",
+    "serialize-javascript": "^7.0.7"
   }
 }

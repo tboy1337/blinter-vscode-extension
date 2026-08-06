@@ -7,8 +7,6 @@ Blinter is a linter and debug companion for batch scripts (`.bat`, `.cmd`). It r
 - Run and debug through `blinter-debug` (F5)
 - Quick fixes for suppression comments and command casing
 
-
-
 ## Table of contents
 
 - [Blinter for VS Code](#blinter-for-vs-code)
@@ -23,9 +21,11 @@ Blinter is a linter and debug companion for batch scripts (`.bat`, `.cmd`). It r
     - [Linting behavior](#linting-behavior)
     - [Presentation](#presentation)
     - [Suppression comments](#suppression-comments)
+    - [Executable resolution](#executable-resolution)
   - [Suppression workflow](#suppression-workflow)
   - [Output and troubleshooting](#output-and-troubleshooting)
   - [Developer setup](#developer-setup)
+  - [CLI-only Blinter install](#cli-only-blinter-install)
   - [Testing](#testing)
   - [Packaging](#packaging)
   - [License](#license)
@@ -38,7 +38,6 @@ Blinter is a linter and debug companion for batch scripts (`.bat`, `.cmd`). It r
 2. In VS Code, open Extensions.
 3. Select the `...` menu and choose `Install from VSIX...`.
 4. Select the VSIX file.
-
 
 ## Quick start
 
@@ -110,6 +109,13 @@ Example `launch.json`:
 - `blinter.suppressionCommentStyle` (`REM | ::`, default `REM`)
 - `blinter.showAskCopilotQuickFix` (`boolean`, default `false`)
 
+### Executable resolution
+
+- `blinter.binaryPath` (`string`, default empty) — optional explicit executable path
+- `blinter.useSystemBlinter` (`boolean`, default `false`) — resolve `blinter.exe` from PATH when bundled binary is missing
+
+Resolution order: configured path → bundled `vendor/Blinter/Blinter.exe` → upstream installer path (`%LOCALAPPDATA%\Programs\Blinter\bin`) → legacy `bin/` / `bins/` → PATH (when enabled).
+
 ## Suppression workflow
 
 When a Blinter diagnostic appears:
@@ -135,13 +141,25 @@ You can remove all suppression comments via:
 
 ## Developer setup
 
-The repository keeps vendor artifacts out of source control where possible. Use:
+Vendor binaries are not committed to git. Populate them before packaging or local runs:
 
 ```powershell
-.\setup-vendor.bat
+.\setup-vendor.cmd
 ```
 
-to populate the required core assets under `vendor/Blinter`.
+This downloads the latest Blinter release zip from GitHub and installs `vendor/Blinter/Blinter.exe`.
+
+Extension icons come from upstream [`blinter_icon.ico`](https://raw.githubusercontent.com/tboy1337/Blinter/refs/heads/main/resources/blinter_icon.ico). `npm run prepare:icons` converts it to the marketplace PNG.
+
+## CLI-only Blinter install
+
+If you want the Blinter CLI outside VS Code, use the upstream installer:
+
+```cmd
+curl -L https://raw.githubusercontent.com/tboy1337/Blinter/refs/heads/main/scripts/install_blinter.cmd -o install_blinter.cmd && (call install_blinter.cmd || cd.) && del install_blinter.cmd
+```
+
+The extension can use that install automatically when the bundled binary is missing.
 
 ## Testing
 
@@ -149,6 +167,7 @@ Common commands:
 
 ```powershell
 npm run lint
+npm run typecheck
 npm run test:unit
 npm run test:integration
 npm run test:matrix
@@ -161,7 +180,7 @@ npm run test:matrix
 Build a VSIX package:
 
 ```powershell
-.\build.bat
+.\build.cmd
 ```
 
 or
@@ -175,4 +194,4 @@ See `PACKAGING.md` for release flow details.
 ## License
 
 - Project: MIT (`LICENSE`)
-- Blinter core linter: https://github.com/tboy1337/Blinter
+- Blinter core linter: https://github.com/tboy1337/Blinter (AGPL-3.0)

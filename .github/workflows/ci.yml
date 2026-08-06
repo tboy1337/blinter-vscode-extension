@@ -24,14 +24,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup vendor binary
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File ./setup-vendor.ps1
+
       - name: Lint
         run: npx eslint .
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Coverage gate (>=95%)
+        run: npm run test:coverage
+
+      - name: Security audit (production deps)
+        run: npm run test:security:audit
+
+      - name: Security audit (dev deps)
+        run: npm run audit:dev
 
       - name: Run extension tests
         run: npm test
 
-      - name: Package VSIX (dry run)
-        run: npx vsce package --no-dependencies
+      - name: Package VSIX
+        run: npm run package:vsix
+
+      - name: Verify VSIX contents
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/verify-vsix.ps1
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4

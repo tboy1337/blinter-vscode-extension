@@ -8,7 +8,7 @@ const reportDir = path.join(repoRoot, 'test', 'reports');
 const matrix = [
   { type: 'Unit Testing', command: 'npm run test:unit' },
   { type: 'Integration Testing', command: 'npm run test:integration' },
-  { type: 'System Testing', command: 'npx vsce package --no-dependencies --out tmp/system-test.vsix' },
+  { type: 'System Testing', command: 'npm run package:vsix -- --no-dependencies --out tmp/system-test.vsix' },
   { type: 'Acceptance Testing (UAT)', command: 'npm run test:uat' },
   { type: 'Regression Testing', command: 'npm run test:regression' },
   { type: 'Performance Testing', command: 'npm run test:performance' },

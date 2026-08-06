@@ -61,6 +61,16 @@ suite('Integration (simulation) - debugger + suppressions', () => {
 
     const extensionSource = fs.readFileSync(extensionJsPath, 'utf8');
     assert.strictEqual(
+      commands.some((cmd) => cmd && cmd.command === 'blinter.runAndDebug'),
+      true,
+      'Expected blinter.runAndDebug command contribution'
+    );
+    assert.strictEqual(
+      extensionSource.includes("registerCommand('blinter.runAndDebug'"),
+      true,
+      'Expected blinter.runAndDebug to be registered in extension.js'
+    );
+    assert.strictEqual(
       extensionSource.includes('provideDebugConfigurations('),
       false,
       'Expected provideDebugConfigurations() to be removed to prevent duplicate launch entries'
@@ -80,12 +90,12 @@ suite('Integration (simulation) - debugger + suppressions', () => {
       await ext.activate();
     }
 
-    const samplePath = path.join(__dirname, '..', 'tmp', 'simulation-debug-target.bat');
-    const sampleContent = [
+    const samplePath = path.join(__dirname, '..', 'tmp', 'simulation-debug-target.cmd');
+    const sampleContent = `${[
       '@echo off',
       'set foo=bar',
       'echo %foo%'
-    ].join('\r\n') + '\r\n';
+    ].join('\r\n')  }\r\n`;
 
     fs.writeFileSync(samplePath, sampleContent, 'utf8');
 

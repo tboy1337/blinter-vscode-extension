@@ -7,11 +7,11 @@ suite('Integration (smoke) - Run & Debug single file', () => {
     this.timeout(20000);
 
   // Resolve sample file relative to the repository root (test file lives under <repo>/test)
-  const samplePath = path.join(__dirname, '..', 'tmp', 'sample1.bat');
+  const samplePath = path.join(__dirname, '..', 'tmp', 'sample1.cmd');
 
   // Ensure extension is activated so runtime registrations are present
   const ext = vscode.extensions.getExtension('14ag.blinter');
-  if (ext) await ext.activate();
+  if (ext) {await ext.activate();}
 
     // Open the sample .bat file in the editor
     const doc = await vscode.workspace.openTextDocument(samplePath);

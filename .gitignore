@@ -9,10 +9,17 @@ vendor/
 releases/
 package0.json
 release_notes.md
+project_logs.log
+
+# Generated test artifacts
+test/reports/
+tmp/
 
 ## exceptions
-!progress.txt
-!project.txt
+!docs/project-spec.txt
+!docs/progress.txt
 !todo.txt
 !vendor/version.txt
-@ts-nocheck
+node_modules
+.vscode-test/
+coverage/

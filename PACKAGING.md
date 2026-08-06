@@ -1,78 +1,76 @@
 # Packaging and VSIX inclusion notes for Blinter extension
 
-This document explains how to package the extension so Windows users receive the bundled native `blinter.exe` and any bundled Python assets.
+This document explains how to package the extension so Windows users receive the bundled native `Blinter.exe`.
 
-Checklist before packaging
+## Checklist before packaging
 
-- Ensure `bin/blinter.exe` (Windows native) is present in the repository root under `bin/` (or `bins/` if you've renamed the folder).
-- Ensure `.vscodeignore` does **not** exclude `bin/` or the executable. The repository’s ignore settings already keep it.
-- The extension no longer ships or references Python scripts; only the native executable is required.
+- Run vendor setup so `vendor/Blinter/Blinter.exe` exists:
+  ```powershell
+  .\setup-vendor.cmd
+  ```
+  or
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-vendor.ps1
+  ```
+- Ensure `icons/blinter_icon.ico` exists (upstream logo) and run `npm run prepare:icons` to generate `icons/blinter-logo.png` for the marketplace.
+- Ensure `.vscodeignore` whitelists `vendor/**` and `icons/**`.
+- The extension ships the native Blinter executable only (no Python runtime).
 
-Third-party license & redistribution notes
------------------------------------------
+## Third-party license and redistribution notes
+
 The bundled native executable is a third-party project (Blinter) authored by
-`tboy1337` and licensed under the GNU AGPL-3.0. The executable included in this
-repository at the time of writing is `bin/Blinter-v1.0.94.exe` (Blinter v1.0.94).
+`tboy1337` and licensed under the GNU AGPL-3.0. Upstream source is available at
+https://github.com/tboy1337/Blinter.
 
-Important: redistributing AGPL-licensed binaries carries strong copyleft
-obligations. If you redistribute a VSIX containing the AGPL binary, you must
-ensure recipients have access to the corresponding source (upstream Blinter
-source is available at https://github.com/tboy1337/Blinter). Review legal
-requirements for AGPL before publishing this extension to the Marketplace or
-any other distribution channel.
+Redistributing AGPL-licensed binaries carries copyleft obligations. If you publish a
+VSIX containing the AGPL binary, ensure recipients can access the corresponding
+source. Review AGPL requirements before publishing to the Marketplace or other
+distribution channels.
 
-If shipping an AGPL binary is not acceptable for your distribution, consider
-one of the following alternatives:
+Alternatives if bundling AGPL binaries is not acceptable:
 
-- Do not bundle the executable in the VSIX; instead provide an installer or
-	post-install download step that fetches the binary directly from the
-	upstream project (ensuring they accept the license and distribution method).
-- Use the pip-installable Python package approach (recommended by upstream) and
-	invoke `python -m blinter` rather than bundling the PyInstaller executable.
-- Replace the executable with a user-provided path and surface a clear
-	configuration option for users to point to an installed Blinter binary.
-- Choose a `publisher` name and set `engines.vscode` in `package.json` to the supported VS Code range.
-- Verify the documentation (README / `project.txt`) references the Run & Debug flow and the `blinter-debug` launch configuration.
+- Do not bundle the executable; document that users must install Blinter separately
+  (for example via upstream [install_blinter.cmd](https://raw.githubusercontent.com/tboy1337/Blinter/refs/heads/main/scripts/install_blinter.cmd))
+  and set `blinter.binaryPath` or `blinter.useSystemBlinter`.
+- Provide a post-install download step that fetches the binary from upstream releases.
 
-Packaging steps (local)
+## Packaging steps (local)
 
-1. Install packaging tool (`vsce`) if you don't have it:
+1. Install dependencies:
 
 ```powershell
-npm install -g vsce
+npm ci
 ```
 
-2. Optional: run the linter and tests locally:
+2. Populate vendor binary and run checks:
 
 ```powershell
-npm install
+.\setup-vendor.cmd
 npm run lint
-npm run test:unit  # runs parser, discovery, analysis, and debug adapter unit tests
+npm run typecheck
+npm run test:unit
 ```
 
-3. Build the VSIX (from repository root):
+3. Build the VSIX:
 
 ```powershell
-vsce package
+npm run package:vsix
 ```
 
-4. Verify the generated `.vsix` contains `bin/blinter.exe` and `assets/`:
+4. Verify the generated `.vsix` contains required files:
 
 ```powershell
-# unzip and inspect (VSIX is a zip file)
-mkdir vsix_inspect
-Copy-Item .\blinter-*.vsix .\vsix.zip
-Expand-Archive .\vsix.zip .\vsix_inspect
-Get-ChildItem .\vsix_inspect -Recurse | Select-Object FullName
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\verify-vsix.ps1
 ```
 
-Notes and recommendations
+## CI packaging
 
-- If you want smaller package sizes, consider shipping platform-specific builds (Windows-only VSIX with `bin/blinter.exe`) or provide download-on-first-run logic. Bundling the exe makes installation frictionless for Windows users.
-- Ensure your `package.json` `publisher` field is set before publishing to the marketplace.
-- If your CI runs `vsce package`, make sure CI checks out binary artifacts or copies `bin/` into the workspace before packaging.
+GitHub Actions runs vendor setup, tests, `npm run package:vsix`, and `tools/verify-vsix.ps1`
+before uploading the VSIX artifact.
 
-Troubleshooting
+## Troubleshooting
 
-- If `blinter.exe` is missing from the VSIX, check `.vscodeignore` for patterns that exclude `bin/` or the file; remove them.
-- If the extension fails to execute the binary after install, verify the binary is not blocked by Windows (right-click > Properties > Unblock) and is a compatible architecture.
+- If `Blinter.exe` is missing from the VSIX, run `setup-vendor.ps1` before packaging.
+- If the extension fails to execute the binary after install, verify the file is not blocked
+  by Windows (Properties → Unblock) and matches your CPU architecture.
+- Some antivirus software may flag PyInstaller-built executables as false positives.

@@ -8,10 +8,25 @@ const { analyzeLine, buildVariableIndexFromFile } = require('./lib/analysis');
 const { parseBlinterOutput } = require('./lib/parser');
 const { InlineDebugAdapterSession } = require('./lib/debugAdapterCore');
 
+/**
+ * @typedef {import('./types/blinter').BlinterIssue} BlinterIssue
+ * @typedef {import('./types/blinter').SummaryGroup} SummaryGroup
+ * @typedef {import('./types/blinter').SummaryGroupItem} SummaryGroupItem
+ * @typedef {import('vscode').ExtensionContext} ExtensionContext
+ * @typedef {import('vscode').TextDocument} TextDocument
+ * @typedef {import('vscode').TextEditor} TextEditor
+ * @typedef {import('vscode').Range} Range
+ * @typedef {import('vscode').Position} Position
+ * @typedef {import('vscode').CodeActionContext} CodeActionContext
+ * @typedef {import('vscode').Uri} Uri
+ */
+
+/** @param {string} languageId */
 function isBatchLanguageId(languageId) {
   return languageId === 'bat' || languageId === 'cmd';
 }
 
+/** @param {TextDocument | undefined} document */
 function isBatchDocument(document) {
   return Boolean(document && isBatchLanguageId(document.languageId));
 }
@@ -24,6 +39,7 @@ function getActiveOrVisibleBatchEditor() {
   return vscode.window.visibleTextEditors.find((editor) => isBatchDocument(editor.document));
 }
 
+/** @param {string | undefined} filePath */
 function normalizeFilePath(filePath) {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     return undefined;
@@ -31,18 +47,30 @@ function normalizeFilePath(filePath) {
   return path.normalize(filePath);
 }
 
+/** @param {string} severity */
 function isInformationalSeverity(severity) {
   return severity === 'info' || severity === 'information' || severity === 'hint';
 }
 
+/** @param {ExtensionContext} context */
 function resolveBlinterExePath(context) {
-  const candidate = getExePath((context && (context.extensionUri || context.extensionPath)) || undefined);
+  const extensionRoot = (context && (context.extensionUri || context.extensionPath)) || undefined;
+  const config = vscode.workspace.getConfiguration('blinter');
+  const options = {
+    binaryPath: config.get('binaryPath', ''),
+    useSystemBlinter: config.get('useSystemBlinter', false)
+  };
+  const candidate = getExePath(extensionRoot, options);
   if (typeof candidate !== 'string' || !candidate.trim()) {
     throw new Error('Blinter executable path could not be resolved.');
+  }
+  if (!options.useSystemBlinter && !fs.existsSync(candidate)) {
+    throw new Error(`Blinter executable not found: ${candidate}`);
   }
   return candidate;
 }
 
+/** @param {ExtensionContext} context */
 function activate(context) {
   if (process.platform !== 'win32') {
     vscode.window.showErrorMessage('Blinter only supports Windows OS. Extension will not be activated.');
@@ -108,6 +136,23 @@ function activate(context) {
   );
   const controller = new BlinterController(context);
   controller.initialize();
+
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.runAndDebug', async () => {
+    const editor = getActiveOrVisibleBatchEditor();
+    if (!editor) {
+      vscode.window.showInformationMessage('Open a .bat or .cmd file to run and debug.');
+      return;
+    }
+    const started = await vscode.debug.startDebugging(undefined, {
+      type: 'blinter-debug',
+      name: 'Launch Batch (Blinter)',
+      request: 'launch',
+      program: editor.document.uri.fsPath
+    });
+    if (!started) {
+      vscode.window.showErrorMessage('Failed to start Blinter debug session.');
+    }
+  }));
 
   // Keep a backward-compatible `blinter.run` command for integrations/tests.
   context.subscriptions.push(vscode.commands.registerCommand('blinter.run', async () => {
@@ -181,7 +226,8 @@ function activate(context) {
     try {
       await controller.askCopilotAboutDiagnostic(payload);
     } catch (err) {
-      controller.log(`[AskCopilot] Error: ${err && err.message ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      controller.log(`[AskCopilot] Error: ${message}`);
       vscode.window.showErrorMessage('Unable to open Copilot Chat for this diagnostic.');
     }
   }));
@@ -190,7 +236,8 @@ function activate(context) {
     try {
       await controller.removeAllSuppressionComments();
     } catch (err) {
-      controller.log(`[Suppressions] Error: ${err && err.message ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      controller.log(`[Suppressions] Error: ${message}`);
       vscode.window.showErrorMessage('Failed to remove suppression comments. Check the Blinter Output channel for details.');
     }
   }));
@@ -198,28 +245,44 @@ function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('blinter.test.getOutputViewState', () => {
     return controller.getOutputViewStateForTest();
   }));
+
+  context.subscriptions.push(vscode.commands.registerCommand('blinter.test.getController', () => controller));
 }
 
 function deactivate() { }
 
 module.exports = {
   activate,
-  deactivate
+  deactivate,
+  __test__: {
+    escapeMarkdown,
+    isBatchLanguageId,
+    isBatchDocument,
+    normalizeFilePath,
+    isInformationalSeverity
+  }
 };
 
 class BlinterController {
+  /** @param {ExtensionContext} context */
   constructor(context) {
     this.context = context;
     this.output = vscode.window.createOutputChannel('Blinter');
     this.diagnostics = vscode.languages.createDiagnosticCollection('blinter');
+    /** @type {Map<string, BlinterIssue[]>} */
     this.issuesByFile = new Map();
     this.variableIndex = new Map();
     this.currentProgramPath = undefined;
     this.currentWorkspaceRoot = undefined;
     this.currentSessionId = undefined;
     this.pendingUpdateTimer = undefined;
+    /** @type {{ state: string, detail: string }} */
     this.status = { state: 'idle', detail: '' };
     this._hasAutoShownOutputView = false;
+    /** @type {vscode.StatusBarItem | undefined} */
+    this.statusBarItem = undefined;
+    /** @type {BlinterOutputViewProvider | undefined} */
+    this.webviewProvider = undefined;
 
     // Current lint run cancellation handle
     this._currentLintHandle = null;
@@ -255,14 +318,14 @@ class BlinterController {
 
     // Existing command-casing quick fixes
     context.subscriptions.push(
-      vscode.languages.registerCodeActionsProvider('bat', this.createQuickFixProvider(), {
+      vscode.languages.registerCodeActionsProvider(['bat', 'cmd'], this.createQuickFixProvider(), {
         providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
       })
     );
 
     // Suppression comment code actions (Task 6)
     context.subscriptions.push(
-      vscode.languages.registerCodeActionsProvider('bat', this.createSuppressionProvider(), {
+      vscode.languages.registerCodeActionsProvider(['bat', 'cmd'], this.createSuppressionProvider(), {
         providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
       })
     );
@@ -317,12 +380,14 @@ class BlinterController {
     context.subscriptions.push(
       vscode.workspace.onDidSaveTextDocument((doc) => {
         const config = vscode.workspace.getConfiguration('blinter');
-        if (!config.get('enabled', true)) return;
+        if (!config.get('enabled', true)) {return;}
         if (config.get('runOn', 'onSave') === 'onSave' && isBatchDocument(doc)) {
+          /* c8 ignore start -- async lint failures are surfaced via output logging paths */
           void this.lintDocument(doc).catch((error) => {
             const message = error instanceof Error ? error.message : String(error);
             this.log(`[Linter] Save-triggered lint failed: ${message}`);
           });
+          /* c8 ignore end */
         }
       })
     );
@@ -330,18 +395,20 @@ class BlinterController {
     context.subscriptions.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
         const config = vscode.workspace.getConfiguration('blinter');
-        if (!config.get('enabled', true)) return;
-        if (String(config.get('runOn', 'onSave')) !== 'onType') return;
+        if (!config.get('enabled', true)) {return;}
+        if (String(config.get('runOn', 'onSave')) !== 'onType') {return;}
         const doc = e.document;
-        if (!isBatchDocument(doc)) return;
+        if (!isBatchDocument(doc)) {return;}
 
         const key = doc.uri.toString();
-        if (debounceTimers.has(key)) clearTimeout(debounceTimers.get(key));
+        if (debounceTimers.has(key)) {clearTimeout(debounceTimers.get(key));}
         const timeout = setTimeout(() => {
+          /* c8 ignore start -- async lint failures are surfaced via output logging paths */
           void this.lintDocument(doc).catch((error) => {
             const message = error instanceof Error ? error.message : String(error);
             this.log(`[Linter] Type-triggered lint failed: ${message}`);
           });
+          /* c8 ignore end */
           debounceTimers.delete(key);
         }, config.get('debounceDelay', 500));
         debounceTimers.set(key, timeout);
@@ -372,6 +439,7 @@ class BlinterController {
     this.maybeEnsureOutputViewVisible(vscode.window.activeTextEditor);
   }
 
+  /** @param {TextEditor | undefined} editor */
   maybeEnsureOutputViewVisible(editor) {
     if (this._hasAutoShownOutputView) {
       return;
@@ -385,38 +453,43 @@ class BlinterController {
 
   /** Task 9: Update the blinter.ini status bar indicator */
   _updateConfigStatusBar() {
+    const statusBarItem = this.statusBarItem;
+    if (!statusBarItem) {
+      return;
+    }
+
     const editor = vscode.window.activeTextEditor;
     if (!editor || !isBatchDocument(editor.document)) {
-      this.statusBarItem.hide();
+      statusBarItem.hide();
       return;
     }
 
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
-      this.statusBarItem.hide();
+      statusBarItem.hide();
       return;
     }
 
     const iniPath = path.join(folders[0].uri.fsPath, 'blinter.ini');
     if (fs.existsSync(iniPath)) {
-      this.statusBarItem.text = '$(gear) blinter.ini';
-      this.statusBarItem.tooltip = 'Workspace Blinter config active';
-      this.statusBarItem.command = {
+      statusBarItem.text = '$(gear) blinter.ini';
+      statusBarItem.tooltip = 'Workspace Blinter config active';
+      statusBarItem.command = {
         command: 'vscode.open',
         arguments: [vscode.Uri.file(iniPath)],
         title: 'Open blinter.ini'
       };
     } else {
-      this.statusBarItem.text = '$(circle-slash) No blinter.ini';
-      this.statusBarItem.tooltip = 'Click to create a Blinter config file';
-      this.statusBarItem.command = 'blinter.createConfig';
+      statusBarItem.text = '$(circle-slash) No blinter.ini';
+      statusBarItem.tooltip = 'Click to create a Blinter config file';
+      statusBarItem.command = 'blinter.createConfig';
     }
-    this.statusBarItem.show();
+    statusBarItem.show();
   }
 
   createQuickFixProvider() {
     return {
-      provideCodeActions: (document, range, context) => {
+      provideCodeActions: (/** @type {TextDocument} */ document, /** @type {Range} */ range, /** @type {CodeActionContext} */ context) => {
         if (!isBatchLanguageId(document.languageId)) {
           return [];
         }
@@ -465,12 +538,12 @@ class BlinterController {
   /** Task 6: Suppression comment code action provider */
   createSuppressionProvider() {
     return {
-      provideCodeActions: (document, range, context) => {
+      provideCodeActions: (/** @type {TextDocument} */ document, /** @type {Range} */ range, /** @type {CodeActionContext} */ context) => {
         if (!isBatchLanguageId(document.languageId)) {
           return [];
         }
 
-        const blinterDiags = context.diagnostics.filter(d => d.source === 'blinter' && d.code);
+        const blinterDiags = context.diagnostics.filter((/** @type {vscode.Diagnostic} */ d) => d.source === 'blinter' && d.code);
         if (blinterDiags.length === 0) {
           return [];
         }
@@ -481,7 +554,7 @@ class BlinterController {
         const actions = [];
 
         // Collect unique codes on this line
-        const codes = [...new Set(blinterDiags.map(d => String(d.code)))];
+        const codes = [...new Set(blinterDiags.map((/** @type {vscode.Diagnostic} */ d) => String(d.code)))];
         const codeList = codes.join(', ');
 
         const lineIndex = (blinterDiags[0] && blinterDiags[0].range ? blinterDiags[0].range.start.line : range.start.line);
@@ -503,7 +576,7 @@ class BlinterController {
             const aboveLine = document.lineAt(lineIndex - 1).text;
             const ignoreMatch = aboveLine.match(/(?:REM|::)\s+LINT:IGNORE\s+(.*)/i);
             if (ignoreMatch) {
-              const existingCodes = ignoreMatch[1].split(',').map(c => c.trim());
+              const existingCodes = ignoreMatch[1].split(',').map((/** @type {string} */ c) => c.trim());
               const allCodes = [...new Set([...existingCodes, ...codes])];
               const newComment = `${commentStyle} LINT:IGNORE ${allCodes.join(', ')}`;
               const commentStart = aboveLine.search(/(?:REM|::)\s+LINT:IGNORE\s/i);
@@ -548,6 +621,7 @@ class BlinterController {
     };
   }
 
+  /** @param {Record<string, unknown>} [payload] */
   async askCopilotAboutDiagnostic(payload) {
     const info = payload || {};
     const codeList = typeof info.codeList === 'string' && info.codeList.trim() ? info.codeList.trim() : 'this Blinter issue';
@@ -557,13 +631,14 @@ class BlinterController {
     const uri = typeof info.uri === 'string' ? info.uri : '';
 
     const promptParts = [`Help me fix ${codeList} in my batch script.`];
-    if (message) promptParts.push(`Blinter message: ${message}`);
-    if (line) promptParts.push(`Line: ${line}`);
-    if (lineText) promptParts.push(`Code: ${lineText}`);
-    if (uri) promptParts.push(`File: ${uri}`);
+    if (message) {promptParts.push(`Blinter message: ${message}`);}
+    if (line) {promptParts.push(`Line: ${line}`);}
+    if (lineText) {promptParts.push(`Code: ${lineText}`);}
+    if (uri) {promptParts.push(`File: ${uri}`);}
     const prompt = promptParts.join('\n');
 
     const commands = await vscode.commands.getCommands(true);
+    /** @param {string} id */
     const has = (id) => commands.includes(id);
 
     if (has('github.copilot.chat.open')) {
@@ -583,7 +658,7 @@ class BlinterController {
   }
 
   async resolveSuppressionTargetDocument() {
-    const isBatchDoc = (doc) => Boolean(
+    const isBatchDoc = (/** @type {TextDocument | undefined} */ doc) => Boolean(
       doc
       && doc.uri
       && (
@@ -627,8 +702,9 @@ class BlinterController {
         if (isBatchDoc(doc)) {
           return doc;
         }
-      } catch {
-        // Keep scanning candidates.
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log(`[OpenDocument] Failed to open candidate ${candidatePath}: ${message}`);
       }
     }
 
@@ -721,6 +797,7 @@ class BlinterController {
     return new vscode.ThemeColor('editorError.background');
   }
 
+  /** @param {Record<string, unknown>} args @param {import('vscode').DebugSession | { id?: string }} session */
   async prepareForLaunch(args, session) {
     this.clearIssues();
 
@@ -737,8 +814,11 @@ class BlinterController {
     this.currentEncoding = config.get('encoding', 'utf8') || 'utf8';
 
     // Support single-file mode: if no workspace, use the file's directory
-    let workspaceFolder = session?.workspaceFolder?.uri?.fsPath
-      || args.workspaceFolder;
+    const debugSession = /** @type {import('vscode').DebugSession | undefined} */ (
+      session && 'workspaceFolder' in session ? session : undefined
+    );
+    let workspaceFolder = debugSession?.workspaceFolder?.uri?.fsPath
+      || (typeof args.workspaceFolder === 'string' ? args.workspaceFolder : undefined);
 
     // Resolve program path first to handle ${file} variables
     let programPath;
@@ -753,7 +833,7 @@ class BlinterController {
       if (!workspaceFolder && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
         workspaceFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
       }
-      programPath = this.resolveProgramPath(args.program, workspaceFolder);
+      programPath = this.resolveProgramPath(String(args.program), workspaceFolder);
     }
 
     if (!fs.existsSync(programPath)) {
@@ -770,7 +850,8 @@ class BlinterController {
       throw new Error(`Resolved executable is invalid (type=${typeof exePath}, value=${String(exePath)}, hasContext=${Boolean(this.context)}, hasExtUri=${Boolean(this.context && this.context.extensionUri)}, hasExtPath=${Boolean(this.context && this.context.extensionPath)})`);
     }
     const cliArgs = buildArgs(config, programPath);
-    const userArgs = Array.isArray(args.args) ? args.args.filter((value) => typeof value === 'string' && value.trim().length > 0) : [];
+    const userArgs = Array.isArray(args.args) ? args.args.filter((/** @type {unknown} */ value) => typeof value === 'string' && value.trim().length > 0) : [];
+    /** @type {string[]} */
     const fullArgs = [...cliArgs, ...userArgs];
 
     this.currentProgramPath = programPath;
@@ -790,6 +871,7 @@ class BlinterController {
   }
 
 
+  /** @param {string} program @param {string | undefined} workspaceFolder */
   resolveProgramPath(program, workspaceFolder) {
     if (path.isAbsolute(program)) {
       return path.normalize(program);
@@ -802,6 +884,7 @@ class BlinterController {
     return path.normalize(path.resolve(process.cwd(), program));
   }
 
+  /** @param {string} line @param {string} channel */
   acceptProcessText(line, channel) {
     const text = line.replace(/\r?$/, '');
     if (!text) {
@@ -811,8 +894,8 @@ class BlinterController {
     this.log(`[${channel}] ${text}`);
 
     const { issues } = analyzeLine(text, {
-      workspaceRoot: this.currentWorkspaceRoot,
-      defaultFile: this.currentProgramPath,
+      workspaceRoot: typeof this.currentWorkspaceRoot === 'string' ? this.currentWorkspaceRoot : undefined,
+      defaultFile: typeof this.currentProgramPath === 'string' ? this.currentProgramPath : undefined,
       variableIndex: this.variableIndex
     });
 
@@ -825,6 +908,7 @@ class BlinterController {
     }
   }
 
+  /** @param {BlinterIssue} issue */
   addIssue(issue) {
     const targetFile = normalizeFilePath(issue.filePath || this.currentProgramPath);
     if (!targetFile) {
@@ -835,7 +919,10 @@ class BlinterController {
     if (!this.issuesByFile.has(issue.filePath)) {
       this.issuesByFile.set(issue.filePath, []);
     }
-    this.issuesByFile.get(issue.filePath).push(issue);
+    const fileIssues = this.issuesByFile.get(issue.filePath);
+    if (fileIssues) {
+      fileIssues.push(issue);
+    }
 
     this.scheduleDiagnosticsUpdate();
   }
@@ -868,16 +955,25 @@ class BlinterController {
     this.updateWebview();
   }
 
+  /**
+   * @param {BlinterIssue} a
+   * @param {BlinterIssue} b
+   */
   compareIssues(a, b) {
+    /** @type {Record<string, number>} */
     const order = { error: 0, warning: 1, information: 2, info: 2, hint: 3 };
-    const severityDelta = (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
+    const severityDelta = (order[String(a.severity)] ?? 3) - (order[String(b.severity)] ?? 3);
     if (severityDelta !== 0) {
       return severityDelta;
     }
     return (a.line || 0) - (b.line || 0);
   }
 
+  /**
+   * @param {BlinterIssue} issue
+   */
   toDiagnostic(issue) {
+    /** @type {Record<string, vscode.DiagnosticSeverity>} */
     const severityMap = {
       error: vscode.DiagnosticSeverity.Error,
       warning: vscode.DiagnosticSeverity.Warning,
@@ -905,7 +1001,11 @@ class BlinterController {
 
     const editors = vscode.window.visibleTextEditors;
     for (const editor of editors) {
-      const issues = this.issuesByFile.get(normalizeFilePath(editor.document.uri.fsPath)) || [];
+      const filePath = normalizeFilePath(editor.document.uri.fsPath);
+      if (!filePath) {
+        continue;
+      }
+      const issues = this.issuesByFile.get(filePath) || [];
       const criticalRanges = [];
 
       for (const issue of issues) {
@@ -968,17 +1068,18 @@ class BlinterController {
 
   collectSummary() {
     const definitions = [
-      { id: 'errors', label: 'Errors', filter: (issue) => issue.severity === 'error' },
-      { id: 'warnings', label: 'Warnings', filter: (issue) => issue.severity === 'warning' },
-      { id: 'info', label: 'Info', filter: (issue) => isInformationalSeverity(issue.severity) },
-      { id: 'undefined', label: 'Undefined Variables', filter: (issue) => issue.classification === 'UndefinedVariable' },
-      { id: 'critical', label: 'Critical Issues', filter: (issue) => issue.isCritical }
+      { id: 'errors', label: 'Errors', filter: (/** @type {BlinterIssue} */ issue) => issue.severity === 'error' },
+      { id: 'warnings', label: 'Warnings', filter: (/** @type {BlinterIssue} */ issue) => issue.severity === 'warning' },
+      { id: 'info', label: 'Info', filter: (/** @type {BlinterIssue} */ issue) => isInformationalSeverity(issue.severity) },
+      { id: 'undefined', label: 'Undefined Variables', filter: (/** @type {BlinterIssue} */ issue) => issue.classification === 'UndefinedVariable' },
+      { id: 'critical', label: 'Critical Issues', filter: (/** @type {BlinterIssue} */ issue) => issue.isCritical }
     ];
 
+    /** @type {SummaryGroup[]} */
     const groups = definitions.map((definition) => ({
       id: definition.id,
       label: definition.label,
-      items: []
+      items: /** @type {SummaryGroupItem[]} */ ([])
     }));
 
     for (const [filePath, list] of this.issuesByFile.entries()) {
@@ -1004,8 +1105,13 @@ class BlinterController {
     return { groups, status: this.status };
   }
 
+  /** @param {TextDocument} document @param {Position} position */
   provideHover(document, position) {
-    const issues = this.issuesByFile.get(normalizeFilePath(document.uri.fsPath)) || [];
+    const filePath = normalizeFilePath(document.uri.fsPath);
+    if (!filePath) {
+      return undefined;
+    }
+    const issues = this.issuesByFile.get(filePath) || [];
     const lineNumber = position.line + 1;
     const hits = issues.filter((issue) => issue.line === lineNumber);
     if (!hits.length) {
@@ -1028,6 +1134,7 @@ class BlinterController {
     return new vscode.Hover(md);
   }
 
+  /** @param {Uri} uri */
   clearDocument(uri) {
     const filePath = normalizeFilePath(uri.fsPath);
     if (!filePath || !this.issuesByFile.has(filePath)) {
@@ -1045,6 +1152,7 @@ class BlinterController {
     this.updateWebview();
   }
 
+  /** @param {number | null | undefined} code */
   handleProcessExit(code) {
     this.lastExitCode = code;
     const status = code === 0 ? 'completed' : 'errored';
@@ -1052,6 +1160,7 @@ class BlinterController {
     this.flushDiagnostics();
   }
 
+  /** @param {string} state @param {string} [detail] */
   updateStatus(state, detail) {
     this.status = { state, detail: detail || '' };
     if (this.webviewProvider) {
@@ -1059,6 +1168,7 @@ class BlinterController {
     }
   }
 
+  /** @param {string} filePath @param {number | undefined} line */
   async revealLocation(filePath, line) {
     if (!filePath) {
       return;
@@ -1072,15 +1182,19 @@ class BlinterController {
       const range = new vscode.Range(position, position);
       editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
       editor.selection = new vscode.Selection(position, position);
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.log(`[Navigate] Unable to open ${filePath}: ${message}`);
       vscode.window.showWarningMessage(`Unable to open ${filePath}`);
     }
   }
 
+  /** @param {string} message */
   log(message) {
     this.output.appendLine(message);
   }
 
+  /** @param {TextDocument} document */
   async lintDocument(document) {
     if (!isBatchDocument(document)) {
       return;
@@ -1132,9 +1246,13 @@ class BlinterController {
     const runId = this._lintRunId + 1;
     this._lintRunId = runId;
 
+    /** @type {string[]} */
     const stdoutLines = [];
     let stderr = '';
 
+    /**
+     * @param {number | null | undefined} exitCodeRaw
+     */
     const finalize = (exitCodeRaw) => {
       if (!this._currentLintHandle || this._currentLintHandle.runId !== runId) {
         return;
@@ -1205,21 +1323,31 @@ class BlinterController {
 }
 
 class BlinterDebugAdapterFactory {
+  /** @param {BlinterController} controller */
   constructor(controller) {
     this.controller = controller;
   }
 
+  /** @param {import('vscode').DebugSession} session */
   createDebugAdapterDescriptor(session) {
     return new vscode.DebugAdapterInlineImplementation(new BlinterInlineDebugAdapter(this.controller, session));
   }
 }
 
 class BlinterInlineDebugAdapter {
+  /**
+   * @param {BlinterController} controller
+   * @param {import('vscode').DebugSession} session
+   */
   constructor(controller, session) {
     this.controller = controller;
     this.session = session;
     this._onDidSendMessage = new vscode.EventEmitter();
     this.onDidSendMessage = this._onDidSendMessage.event;
+    /** @type {vscode.Disposable | undefined} */
+    this.innerSubscription = undefined;
+    /** @type {InlineDebugAdapterSession | undefined} */
+    this.inner = undefined;
 
     // In test mode we provide a fake spawn implementation to avoid actually executing binaries
     /**
@@ -1248,6 +1376,7 @@ class BlinterInlineDebugAdapter {
         }, 10);
         return fake;
       }
+      /* c8 ignore next -- production spawn path; covered by integration tests */
       return cp.spawn(command, args, options);
     };
 
@@ -1258,8 +1387,11 @@ class BlinterInlineDebugAdapter {
     });
   }
 
+  /** @param {object} message */
   handleMessage(message) {
-    this.inner.handleMessage(message);
+    if (this.inner) {
+      this.inner.handleMessage(message);
+    }
   }
 
   dispose() {
@@ -1276,15 +1408,22 @@ class BlinterInlineDebugAdapter {
 }
 
 class BlinterOutputViewProvider {
+  /**
+   * @param {import('vscode').Uri} extensionUri
+   * @param {BlinterController} controller
+   */
   constructor(extensionUri, controller) {
     this.extensionUri = extensionUri;
     this.controller = controller;
     this._view = undefined;
+    /** @type {{ groups: SummaryGroup[] }} */
     this._data = { groups: [] };
+    /** @type {{ state: string, detail: string }} */
     this._status = { state: 'idle', detail: '' };
     this._lastRenderedHtml = '';
   }
 
+  /** @param {import('vscode').WebviewView} webviewView */
   resolveWebviewView(webviewView) {
     this._view = webviewView;
     const webview = webviewView.webview;
@@ -1294,14 +1433,14 @@ class BlinterOutputViewProvider {
     this._lastRenderedHtml = this.renderHtml(webview);
     webview.html = this._lastRenderedHtml;
 
-    webview.onDidReceiveMessage((msg) => {
+    webview.onDidReceiveMessage((/** @type {{ command?: string, path?: string, line?: number }} */ msg) => {
       if (msg?.command === 'reveal' && msg.path) {
         void this.controller.revealLocation(msg.path, msg.line);
         return;
       }
       if (msg?.command === 'removeSuppressions') {
-        void this.controller.removeAllSuppressionComments().catch((err) => {
-          const message = err && err.message ? err.message : String(err);
+        void this.controller.removeAllSuppressionComments().catch((/** @type {unknown} */ err) => {
+          const message = err instanceof Error ? err.message : String(err);
           this.controller.log(`[Suppressions] Error: ${message}`);
           vscode.window.showErrorMessage('Failed to remove suppression comments. Check the Blinter Output channel for details.');
         });
@@ -1315,20 +1454,28 @@ class BlinterOutputViewProvider {
     if (this._view && typeof this._view.show === 'function') {
       try {
         this._view.show(true);
-      } catch {
-        // ignore
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.controller.log(`[OutputView] Failed to show webview: ${message}`);
       }
     }
     // Removed focus-stealing command to allow webview visibility without forcing focus switch
   }
 
+  /** @param {{ groups?: SummaryGroup[] }} [data] */
   update(data) {
-    this._data = data || { groups: [] };
+    this._data = {
+      groups: data?.groups ?? []
+    };
     this.postUpdate();
   }
 
+  /** @param {{ state?: string, detail?: string }} [status] */
   updateStatus(status) {
-    this._status = status || { state: 'idle', detail: '' };
+    this._status = {
+      state: status?.state ?? 'idle',
+      detail: status?.detail ?? ''
+    };
     this.postUpdate();
   }
 
@@ -1354,6 +1501,8 @@ class BlinterOutputViewProvider {
     });
   }
 
+  /* c8 ignore start -- static webview HTML template; covered by integration UI tests */
+  /** @param {import('vscode').Webview} webview */
   renderHtml(webview) {
     const cspSource = webview.cspSource;
     return `<!DOCTYPE html>
@@ -1564,8 +1713,10 @@ class BlinterOutputViewProvider {
   </body>
 </html>`;
   }
+  /* c8 ignore end */
 }
 
+/** @param {unknown} value */
 function escapeMarkdown(value) {
   return String(value || '')
     .replace(/[\\`*_{}[\]()#+\-.!]/g, '\\$&');

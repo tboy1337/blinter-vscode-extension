@@ -1,0 +1,24 @@
+{
+  "all": false,
+  "check-coverage": false,
+  "include": [
+    "lib/**/*.js",
+    "extension.js"
+  ],
+  "exclude": [
+    "test/**",
+    "tools/**",
+    "node_modules/**",
+    ".vscode-test/**"
+  ],
+  "reporter": [
+    "text",
+    "text-summary",
+    "lcov"
+  ],
+  "report-dir": "coverage",
+  "lines": 95,
+  "statements": 95,
+  "functions": 95,
+  "branches": 95
+}
