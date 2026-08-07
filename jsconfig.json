@@ -2,12 +2,31 @@
 	"compilerOptions": {
 		"module": "Node16",
 		"target": "ES2022",
-		"checkJs": true,  /* Typecheck .js files. */
+		"checkJs": true,
+		"strict": true,
+		"noImplicitOverride": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true,
 		"lib": [
 			"ES2022"
-		]
+		],
+		"types": [
+			"node",
+			"vscode"
+		],
+		"noEmit": true,
+		"skipLibCheck": true,
+		"maxNodeModuleJsDepth": 0
 	},
+	"include": [
+		"extension.js",
+		"lib/**/*.js",
+		"types/**/*.d.ts"
+	],
 	"exclude": [
-		"node_modules"
+		"node_modules",
+		".vscode-test",
+		"coverage"
 	]
 }

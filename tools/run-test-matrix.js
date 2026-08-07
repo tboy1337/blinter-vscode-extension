@@ -2,13 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
 
+// Manual-only local test orchestrator. CI runs the individual steps directly in .github/workflows/ci.yml.
 const repoRoot = path.resolve(__dirname, '..');
 const reportDir = path.join(repoRoot, 'test', 'reports');
 
 const matrix = [
   { type: 'Unit Testing', command: 'npm run test:unit' },
   { type: 'Integration Testing', command: 'npm run test:integration' },
-  { type: 'System Testing', command: 'npx vsce package --no-dependencies --out tmp/system-test.vsix' },
+  { type: 'System Testing', command: 'npm run package:vsix -- --no-dependencies --out tmp/system-test.vsix' },
   { type: 'Acceptance Testing (UAT)', command: 'npm run test:uat' },
   { type: 'Regression Testing', command: 'npm run test:regression' },
   { type: 'Performance Testing', command: 'npm run test:performance' },
@@ -18,6 +19,10 @@ const matrix = [
   { type: 'Exploratory Testing', command: 'npm run test:exploratory' }
 ];
 
+/**
+ * @param {string} command
+ * @returns {{ command: string, exitCode: number, durationSeconds: number, stdout: string, stderr: string }}
+ */
 function runCommand(command) {
   const started = Date.now();
   const result = cp.spawnSync(command, {
@@ -36,6 +41,10 @@ function runCommand(command) {
   };
 }
 
+/**
+ * @param {Array<{ type: string, command: string, exitCode: number, durationSeconds: number, stdout: string, stderr: string }>} results
+ * @returns {string}
+ */
 function formatReport(results) {
   const lines = [];
   lines.push('# Test Matrix Report');

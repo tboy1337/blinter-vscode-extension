@@ -9,6 +9,7 @@ export default [
         "out/**",
         "releases/**",
         "vendor/**",
+        "coverage/**",
         "**/*.vsix"
     ]
 },
@@ -27,17 +28,26 @@ export default [
         },
 
         ecmaVersion: 2022,
-        sourceType: "module",
+        sourceType: "commonjs",
     },
 
     rules: {
-        "no-const-assign": "warn",
-        "no-this-before-super": "warn",
-        "no-undef": "warn",
-        "no-unreachable": "warn",
-        "no-unused-vars": "warn",
-        "constructor-super": "warn",
-        "valid-typeof": "warn",
+        "no-const-assign": "error",
+        "no-this-before-super": "error",
+        "no-undef": "error",
+        "no-unreachable": "error",
+        "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_" }],
+        "constructor-super": "error",
+        "valid-typeof": "error",
+        "eqeqeq": ["error", "always", { "null": "ignore" }],
+        "curly": ["error", "all"],
+        "no-var": "error",
+        "prefer-const": "error",
+        "no-throw-literal": "error",
+        "no-useless-return": "error",
+        "no-duplicate-imports": "error",
+        "no-shadow": "error",
+        "prefer-template": "error",
     },
 }
 ];

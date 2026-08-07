@@ -5,19 +5,15 @@
 # runtime files
 !extension.js
 !package.json
-!jsconfig.json
 
 !lib/**
 !icons/**
+!vendor/**
 
 # Documentation 
 !README.md
 !LICENSE
 !CHANGELOG.md
-
-# icons 
-!icons/**
-!vendor/**
 
 # .vscodeignore itself 
 !.vscodeignore

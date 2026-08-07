@@ -3,7 +3,7 @@ const fs = require('fs');
 const cp = require('child_process');
 const { runTests } = require('@vscode/test-electron');
 
-const PREFERRED_VSCODE_VERSION = '1.105.1';
+const PREFERRED_VSCODE_VERSION = '1.125.0';
 
 function resolveUserProfile() {
   if (process.env.USERPROFILE) {
@@ -13,6 +13,15 @@ function resolveUserProfile() {
     return path.join(process.env.HOMEDRIVE, process.env.HOMEPATH);
   }
   return undefined;
+}
+
+function getLocalCachedExecutablePath(extensionDevelopmentPath) {
+  return path.join(
+    extensionDevelopmentPath,
+    '.vscode-test',
+    `vscode-win32-x64-archive-${PREFERRED_VSCODE_VERSION}`,
+    'Code.exe'
+  );
 }
 
 function getPreferredExecutablePath() {
@@ -35,11 +44,21 @@ function assertLooksLikeVSCodeExecutable(executablePath) {
   delete env.ELECTRON_RUN_AS_NODE;
   const result = cp.spawnSync(executablePath, ['--status'], { encoding: 'utf8', env, timeout: 20000 });
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
-  if (result.status !== 0 || /Usage:\s+node/i.test(output) || !/Version:\s+Code\s+\d+\.\d+\.\d+/i.test(output)) {
-    throw new Error(
-      `Configured VS Code executable does not report a VS Code version: ${executablePath}`
-    );
+  if (/Version:\s+Code\s+\d+\.\d+\.\d+/i.test(output)) {
+    return;
   }
+  if (
+    result.status === 0
+    || /can only be used if Code is already running/i.test(output)
+  ) {
+    const size = fs.statSync(executablePath).size;
+    if (size > 50_000_000) {
+      return;
+    }
+  }
+  throw new Error(
+    `Configured VS Code executable does not report a VS Code version: ${executablePath}`
+  );
 }
 
 async function main() {
@@ -48,7 +67,11 @@ async function main() {
     // The test runner entrypoint that bootstraps Mocha and loads tests
     const extensionTestsPath = path.resolve(__dirname, 'suite', 'index.js');
 
-    const preferredExecutable = getPreferredExecutablePath();
+    const localExecutable = getLocalCachedExecutablePath(extensionDevelopmentPath);
+    const machineExecutable = getPreferredExecutablePath();
+    const cachedExecutable = [localExecutable, machineExecutable].find(
+      (candidate) => typeof candidate === 'string' && fs.existsSync(candidate)
+    );
 
     // Allow running tests against a specific VS Code build via VSCODE_VERSION.
     const vscodeVersion = process.env.VSCODE_VERSION || PREFERRED_VSCODE_VERSION;
@@ -58,11 +81,11 @@ async function main() {
       extensionTestsPath
     };
 
-    if (preferredExecutable && fs.existsSync(preferredExecutable)) {
+    if (cachedExecutable) {
       try {
-        assertLooksLikeVSCodeExecutable(preferredExecutable);
-        runOptions.vscodeExecutablePath = preferredExecutable;
-        console.log(`Using cached VS Code executable: ${preferredExecutable}`);
+        assertLooksLikeVSCodeExecutable(cachedExecutable);
+        runOptions.vscodeExecutablePath = cachedExecutable;
+        console.log(`Using cached VS Code executable: ${cachedExecutable}`);
       } catch (validationError) {
         const message = validationError instanceof Error ? validationError.message : String(validationError);
         console.warn(`Cached VS Code executable is invalid. Falling back to download. Reason: ${message}`);

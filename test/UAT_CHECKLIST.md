@@ -17,4 +17,4 @@ This checklist tracks user-facing acceptance flows for Blinter in VS Code.
 
 - Automated acceptance guard: `npm run test:uat`
 - Integration acceptance coverage: `npm run test:integration`
-- Last execution: 2026-02-22
+- Last execution: 2026-08-06

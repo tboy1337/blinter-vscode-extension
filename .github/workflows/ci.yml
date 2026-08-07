@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     name: Build & Test
@@ -13,28 +17,78 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Install PowerShell modules
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module Pester, PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: PowerShell lint (PSScriptAnalyzer)
+        run: npm run lint:powershell
+
+      - name: PowerShell tests (Pester >=95% coverage)
+        run: npm run test:powershell
+
+      - name: Cache VS Code test host
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('test/runTest.js', 'package-lock.json') }}
+          restore-keys: |
+            vscode-test-${{ runner.os }}-
+
+      - name: Setup vendor binary
+        # setup-vendor.ps1 downloads the latest stable Blinter release when BLINTER_VERSION is unset.
+        # Set BLINTER_VERSION in the workflow env to pin a specific tag for debugging or bisects.
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup-vendor.ps1
+
       - name: Lint
-        run: npx eslint .
+        run: npm run lint
 
-      - name: Run extension tests
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Security scan (static)
+        run: npm run test:security
+
+      - name: Coverage gate (>=95%)
+        run: npm run test:coverage
+
+      - name: Performance checks
+        run: npm run test:performance
+
+      - name: UAT checks
+        run: npm run test:uat
+
+      - name: Security audit (production deps)
+        run: npm run test:security:audit
+
+      - name: Security audit (dev deps)
+        run: npm run audit:dev
+
+      - name: Run extension integration tests
         run: npm test
+        env:
+          BLINTER_INTEGRATION_ONLY: "1"
 
-      - name: Package VSIX (dry run)
-        run: npx vsce package --no-dependencies
+      - name: Package VSIX
+        run: npm run package:vsix
+
+      - name: Verify VSIX contents
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/verify-vsix.ps1
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: blinter-vsix
           path: "*.vsix"

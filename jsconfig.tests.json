@@ -1,0 +1,23 @@
+{
+	"extends": "./jsconfig.json",
+	"compilerOptions": {
+		"checkJs": false,
+		"strict": false,
+		"noImplicitAny": false,
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"types": [
+			"node",
+			"vscode",
+			"mocha"
+		]
+	},
+	"include": [
+		"test/**/*.js"
+	],
+	"exclude": [
+		"node_modules",
+		".vscode-test",
+		"coverage"
+	]
+}

@@ -100,4 +100,76 @@ describe('Regression tests', () => {
 
     session.dispose();
   });
+
+  it('debug adapter treats null close exit code as failure', async () => {
+    let exitCode;
+    let proc;
+
+    const controller = {
+      currentProgramPath: 'C:/repo/sample.bat',
+      prepareForLaunch: async () => ({
+        executable: 'blinter.exe',
+        args: ['sample.bat'],
+        cwd: 'C:/repo'
+      }),
+      acceptProcessText: () => {},
+      handleProcessExit: (code) => { exitCode = code; },
+      log: () => {}
+    };
+
+    const session = new InlineDebugAdapterSession(controller, { id: 'session-null-exit' }, {
+      spawn: () => {
+        proc = createFakeProcess();
+        return proc;
+      }
+    });
+
+    session.handleMessage({ type: 'request', seq: 1, command: 'launch', arguments: { program: 'sample.bat' } });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    proc.emit('close', null);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.strictEqual(exitCode, null);
+    session.dispose();
+  });
+
+  it('debug adapter settles once when timeout and close both fire', async () => {
+    const exits = [];
+    const messages = [];
+    let proc;
+
+    const controller = {
+      currentProgramPath: 'C:/repo/sample.bat',
+      prepareForLaunch: async () => ({
+        executable: 'blinter.exe',
+        args: ['sample.bat'],
+        cwd: 'C:/repo',
+        timeoutMs: 5
+      }),
+      acceptProcessText: () => {},
+      handleProcessExit: (code) => exits.push(code),
+      log: () => {}
+    };
+
+    const session = new InlineDebugAdapterSession(controller, { id: 'session-timeout-close' }, {
+      spawn: () => {
+        proc = createFakeProcess();
+        proc.kill = () => {
+          proc.killed = true;
+          proc.emit('close', 1);
+        };
+        return proc;
+      }
+    });
+
+    session.onDidSendMessage((msg) => messages.push(msg));
+    session.handleMessage({ type: 'request', seq: 1, command: 'launch', arguments: { program: 'sample.bat' } });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.deepStrictEqual(exits, [null]);
+    const terminatedEvents = messages.filter((msg) => msg.type === 'event' && msg.event === 'terminated');
+    assert.strictEqual(terminatedEvents.length, 1);
+    session.dispose();
+  });
 });

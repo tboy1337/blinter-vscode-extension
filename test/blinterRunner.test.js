@@ -80,10 +80,17 @@ describe('BlinterRunner — buildArgs', () => {
 });
 
 describe('BlinterRunner — getExePath', () => {
-    it('returns the correct path to the vendored EXE', () => {
+    it('returns the vendored path when executable exists', () => {
         const extensionUri = 'C:\\path\\to\\extension';
         const expected = path.join(extensionUri, 'vendor', 'Blinter', 'Blinter.exe');
         const actual = getExePath(extensionUri);
+        assert.strictEqual(actual, expected);
+    });
+
+    it('returns fallback vendor path when no executable is found', () => {
+        const extensionUri = 'C:\\path\\to\\extension';
+        const expected = path.join(extensionUri, 'vendor', 'Blinter', 'Blinter.exe');
+        const actual = getExePath(extensionUri, { useSystemBlinter: false });
         assert.strictEqual(actual, expected);
     });
 });

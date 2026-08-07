@@ -2,34 +2,23 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vscode = require('vscode');
-
-function waitForDebugTermination(timeoutMs = 45000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      if (disposable) {
-        disposable.dispose();
-      }
-      reject(new Error(`Timed out waiting for debug termination after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    const disposable = vscode.debug.onDidTerminateDebugSession((session) => {
-      if (session.type !== 'blinter-debug') {
-        return;
-      }
-      clearTimeout(timer);
-      disposable.dispose();
-      resolve(session);
-    });
-  });
-}
+const { createIntegrationTempBatch } = require('./support/integration-fixtures');
+const {
+  activateBlinter,
+  getExtensionPackageJson,
+  openBatchFile,
+  pollBlinterDiagnostics,
+  startBlinterDebug
+} = require('./support/integration-helpers');
+const { pollUntil } = require('./support/poll');
 
 suite('Integration (simulation) - debugger + suppressions', () => {
-  test('validates launch/debug + suppression UI contributions', () => {
+  test('validates launch/debug + suppression UI contributions', async () => {
     const projectRoot = path.join(__dirname, '..');
-    const packageJsonPath = path.join(projectRoot, 'package.json');
-    const extensionJsPath = path.join(projectRoot, 'extension.js');
+    const commandsJsPath = path.join(projectRoot, 'lib', 'commands.js');
+    const outputViewJsPath = path.join(projectRoot, 'lib', 'outputView.js');
 
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const packageJson = await getExtensionPackageJson();
     const commands = (packageJson.contributes && packageJson.contributes.commands) || [];
     const viewTitleMenus = (packageJson.contributes && packageJson.contributes.menus && packageJson.contributes.menus['view/title']) || [];
     const debuggers = (packageJson.contributes && packageJson.contributes.debuggers) || [];
@@ -59,14 +48,15 @@ suite('Integration (simulation) - debugger + suppressions', () => {
       'Expected exactly one "Launch Batch (Blinter)" initial configuration contribution'
     );
 
-    const extensionSource = fs.readFileSync(extensionJsPath, 'utf8');
+    const commandsSource = fs.readFileSync(commandsJsPath, 'utf8');
+    const outputViewSource = fs.readFileSync(outputViewJsPath, 'utf8');
     assert.strictEqual(
-      extensionSource.includes('provideDebugConfigurations('),
-      false,
-      'Expected provideDebugConfigurations() to be removed to prevent duplicate launch entries'
+      commandsSource.includes("registerCommand('blinter.runAndDebug'"),
+      true,
+      'Expected blinter.runAndDebug to be registered in lib/commands.js'
     );
     assert.strictEqual(
-      extensionSource.includes('removeSuppressionsBtn'),
+      outputViewSource.includes('removeSuppressionsBtn'),
       true,
       'Expected Blinter Output webview HTML to include remove-suppressions button'
     );
@@ -75,31 +65,18 @@ suite('Integration (simulation) - debugger + suppressions', () => {
   test('inserts suppression via quick fix and removes it via button command path', async function () {
     this.timeout(90000);
 
-    const ext = vscode.extensions.getExtension('14ag.blinter');
-    if (ext) {
-      await ext.activate();
-    }
+    await activateBlinter();
 
-    const samplePath = path.join(__dirname, '..', 'tmp', 'simulation-debug-target.bat');
-    const sampleContent = [
+    const samplePath = createIntegrationTempBatch(__dirname, 'simulation-debug-target.cmd', [
       '@echo off',
-      'set foo=bar',
-      'echo %foo%'
-    ].join('\r\n') + '\r\n';
+      'set FO=1',
+      'echo Hello %FO%',
+      'call missing.bat'
+    ]);
 
-    fs.writeFileSync(samplePath, sampleContent, 'utf8');
+    const doc = await openBatchFile(samplePath);
 
-    const doc = await vscode.workspace.openTextDocument(samplePath);
-    await vscode.window.showTextDocument(doc, { preview: false });
-
-    const terminated = waitForDebugTermination();
-    const started = await vscode.debug.startDebugging(undefined, {
-      type: 'blinter-debug',
-      name: 'Launch Batch (Blinter) - simulation',
-      request: 'launch',
-      program: samplePath
-    });
-
+    const { started, terminated } = await startBlinterDebug(samplePath, 'Launch Batch (Blinter) - simulation');
     assert.strictEqual(started, true, 'Expected debug session to start');
     await vscode.commands.executeCommand('workbench.view.debug');
     const allCommands = await vscode.commands.getCommands(true);
@@ -107,9 +84,11 @@ suite('Integration (simulation) - debugger + suppressions', () => {
     if (focusCommand) {
       await vscode.commands.executeCommand(focusCommand);
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const outputViewState = await vscode.commands.executeCommand('blinter.test.getOutputViewState');
+    const outputViewState = await pollUntil(async () => {
+      const state = await vscode.commands.executeCommand('blinter.test.getOutputViewState');
+      return state && state.viewResolved ? state : null;
+    }, { timeoutMs: 15000, label: 'Blinter Output view state' });
     assert.strictEqual(
       Boolean(outputViewState && outputViewState.viewResolved),
       true,
@@ -127,22 +106,15 @@ suite('Integration (simulation) - debugger + suppressions', () => {
     );
 
     await terminated;
-    await new Promise((resolve) => setTimeout(resolve, 1200));
 
-    const diagnostics = vscode.languages.getDiagnostics(doc.uri);
-    const hasWarning = diagnostics.some((d) => d.severity === vscode.DiagnosticSeverity.Warning);
-    const hasInformation = diagnostics.some((d) => d.severity === vscode.DiagnosticSeverity.Information);
+    // Debug diagnostics are cleared when the session ends; lint the active file for quick-fix coverage.
+    await openBatchFile(samplePath);
+    await vscode.commands.executeCommand('blinter.run');
 
-    assert.strictEqual(
-      hasWarning,
-      true,
-      `Expected at least one warning diagnostic. Saw: ${diagnostics.map((d) => `${d.code || 'NO_CODE'}:${d.severity}`).join(', ')}`
-    );
-    assert.strictEqual(
-      hasInformation,
-      true,
-      `Expected at least one information diagnostic. Saw: ${diagnostics.map((d) => `${d.code || 'NO_CODE'}:${d.severity}`).join(', ')}`
-    );
+    const diagnostics = await pollBlinterDiagnostics(doc.uri, {
+      timeoutMs: 30000,
+      label: 'lint diagnostics after debug'
+    });
 
     const commands = await vscode.commands.getCommands(true);
     assert.strictEqual(
@@ -177,7 +149,11 @@ suite('Integration (simulation) - debugger + suppressions', () => {
         ...(Array.isArray(suppressAction.command.arguments) ? suppressAction.command.arguments : [])
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    await pollUntil(async () => {
+      const text = (await vscode.workspace.openTextDocument(samplePath)).getText();
+      return /LINT:IGNORE(?:-LINE)?/i.test(text) ? text : null;
+    }, { timeoutMs: 5000, label: 'suppression comment insertion' });
 
     const withSuppressionText = (await vscode.workspace.openTextDocument(samplePath)).getText();
     assert.strictEqual(
@@ -188,10 +164,11 @@ suite('Integration (simulation) - debugger + suppressions', () => {
 
     // The UI button posts this exact command path.
     await vscode.commands.executeCommand('blinter.removeAllSuppressions');
-    await new Promise((resolve) => setTimeout(resolve, 300));
 
-    const updatedDoc = await vscode.workspace.openTextDocument(samplePath);
-    const updatedText = updatedDoc.getText();
+    const updatedText = await pollUntil(async () => {
+      const text = (await vscode.workspace.openTextDocument(samplePath)).getText();
+      return /LINT:IGNORE(?:-LINE)?/i.test(text) ? null : text;
+    }, { timeoutMs: 5000, label: 'suppression comment removal' });
 
     assert.strictEqual(
       /LINT:IGNORE(?:-LINE)?/i.test(updatedText),
@@ -199,7 +176,7 @@ suite('Integration (simulation) - debugger + suppressions', () => {
       `Expected suppression comments to be removed, but file was:\n${updatedText}`
     );
     assert.strictEqual(
-      /\bset foo=bar\b/i.test(updatedText),
+      /\bset FO=1\b/i.test(updatedText),
       true,
       'Expected script body to remain after suppression removal'
     );

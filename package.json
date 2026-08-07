@@ -1,6 +1,6 @@
 {
   "name": "blinter",
-  "version": "1.26.38560",
+  "version": "1.26.80600",
   "publisher": "14ag",
   "icon": "icons/blinter-logo.png",
   "description": "A linter for Windows Batch files with real-time feedback and quick fixes",
@@ -14,15 +14,22 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/14ag/blinter_vscode_extension"
+    "url": "https://github.com/14ag/blinter-vscode-extension"
   },
+  "bugs": {
+    "url": "https://github.com/14ag/blinter-vscode-extension/issues"
+  },
+  "homepage": "https://github.com/14ag/blinter-vscode-extension",
+  "changelog": "CHANGELOG.md",
+  "license": "MIT",
   "categories": [
     "Linters",
     "Debuggers",
     "Other"
   ],
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.125.0",
+    "node": ">=22"
   },
   "keywords": [
     "batch",
@@ -36,20 +43,20 @@
     "batch linter",
     "batch debugger"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Blinter spawns the Blinter.exe process to lint batch files. Use caution in untrusted workspaces."
+    },
+    "virtualWorkspaces": false
+  },
   "keybindings": [
     {
       "command": "blinter.runAndDebug",
-      "key": "F5",
+      "key": "ctrl+f5",
+      "when": "resourceLangId == 'bat'",
       "enablement": "resourceLangId == 'bat'"
     }
-  ],
-  "activationEvents": [
-    "onDebugInitialConfigurations",
-    "onDebugResolve:blinter-debug",
-    "onView:blinter.outputSummary",
-    "onLanguage:bat",
-    "onLanguage:cmd",
-    "onDebug:blinter-debug"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -74,15 +81,14 @@
     "debuggers": [
       {
         "type": "blinter-debug",
-        "label": "Blinter batch Debugger",
+        "label": "Blinter Batch Debugger",
         "configurationAttributes": {
           "launch": {
             "properties": {
               "request": {
                 "type": "string",
                 "enum": [
-                  "launch",
-                  "attach"
+                  "launch"
                 ],
                 "default": "launch"
               },
@@ -93,7 +99,7 @@
               },
               "args": {
                 "type": "array",
-                "description": "Additional arguments to pass to the batch file",
+                "description": "Additional Blinter CLI flags (e.g. --verbose). Not passed to the batch script.",
                 "items": {
                   "type": "string"
                 },
@@ -165,11 +171,13 @@
       "title": "Blinter",
       "properties": {
         "blinter.enabled": {
+          "scope": "resource",
           "type": "boolean",
           "default": true,
           "description": "Enable/disable Blinter."
         },
         "blinter.runOn": {
+          "scope": "resource",
           "type": "string",
           "enum": [
             "onSave",
@@ -179,11 +187,13 @@
           "description": "Run the linter on save or as you type."
         },
         "blinter.debounceDelay": {
+          "scope": "resource",
           "type": "number",
           "default": 500,
           "description": "Delay in milliseconds for onType linting."
         },
         "blinter.quickFixCodes": {
+          "scope": "resource",
           "type": "array",
           "items": {
             "type": "string"
@@ -196,21 +206,25 @@
           "description": "Diagnostic codes that should offer command-normalized quick fixes."
         },
         "blinter.criticalHighlightColor": {
+          "scope": "resource",
           "type": "string",
           "default": "#5a1124",
           "description": "Hex color for critical issue highlights (background color). Used during debug sessions."
         },
         "blinter.encoding": {
+          "scope": "resource",
           "type": "string",
           "default": "utf8",
           "description": "Encoding to use when reading Blinter CLI output (e.g., utf8, utf16le)."
         },
         "blinter.followCalls": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
           "description": "Pass --follow-calls to Blinter. Traces CALL statements into called scripts and shares variable context, eliminating false-positive undefined-variable warnings."
         },
         "blinter.minSeverity": {
+          "scope": "resource",
           "type": "string",
           "enum": [
             "all",
@@ -223,6 +237,7 @@
           "description": "Minimum severity level to report. E.g. 'warning' suppresses style and performance diagnostics."
         },
         "blinter.enabledRules": {
+          "scope": "resource",
           "type": "array",
           "items": {
             "type": "string"
@@ -231,6 +246,7 @@
           "description": "Exclusive list of rule codes to enable (e.g. ['E001', 'W005']). If empty, all rules are enabled. Passed as --enabled-rules to Blinter."
         },
         "blinter.disabledRules": {
+          "scope": "resource",
           "type": "array",
           "items": {
             "type": "string"
@@ -239,21 +255,25 @@
           "description": "List of rule codes to disable (e.g. ['S007', 'S011']). Passed as --disabled-rules to Blinter."
         },
         "blinter.useConfigFile": {
+          "scope": "resource",
           "type": "boolean",
           "default": true,
           "description": "Whether Blinter should look for and use a blinter.ini in the workspace root. Set to false to pass --no-config."
         },
         "blinter.maxLineLength": {
+          "scope": "resource",
           "type": "number",
           "default": 100,
           "description": "Maximum line length for rule S011. Passed as --max-line-length."
         },
         "blinter.noRecursive": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
           "description": "When linting a directory, only analyze files in the top-level folder (--no-recursive)."
         },
         "blinter.suppressionCommentStyle": {
+          "scope": "resource",
           "type": "string",
           "enum": [
             "REM",
@@ -263,19 +283,47 @@
           "description": "Comment style used when inserting LINT:IGNORE suppression comments."
         },
         "blinter.showAskCopilotQuickFix": {
+          "scope": "resource",
           "type": "boolean",
           "default": false,
           "description": "Show 'Ask Copilot' in Blinter quick fixes. Keep disabled to avoid duplicate Copilot Fix/Explain actions."
+        },
+        "blinter.binaryPath": {
+          "scope": "resource",
+          "type": "string",
+          "default": "",
+          "description": "Optional path to Blinter executable. Relative paths resolve from the extension root."
+        },
+        "blinter.useSystemBlinter": {
+          "scope": "resource",
+          "type": "boolean",
+          "default": false,
+          "description": "When true, resolve blinter.exe from PATH if bundled binary is not found."
+        },
+        "blinter.processTimeoutMs": {
+          "scope": "resource",
+          "type": "number",
+          "default": 120000,
+          "description": "Maximum time in milliseconds before a running Blinter process is terminated."
+        },
+        "blinter.saveBeforeLint": {
+          "scope": "resource",
+          "type": "boolean",
+          "default": false,
+          "description": "When true, prompt to save dirty batch files before linting or debugging instead of using a temporary snapshot."
         }
       }
     }
   },
   "scripts": {
     "lint": "eslint .",
-    "pretest": "npm run lint",
+    "lint:powershell": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/lint-powershell.ps1",
+    "typecheck": "tsc --noEmit -p jsconfig.json && tsc --noEmit -p jsconfig.tools.json && tsc --noEmit -p jsconfig.tests.json",
     "test": "node ./test/runTest.js",
-    "test:unit": "mocha \"test/parser.test.js\" \"test/blinterRunner.test.js\" \"test/analysis.test.js\" \"test/debugAdapter.test.js\" \"test/discovery.test.js\"",
-    "test:integration": "node ./test/runTest.js",
+    "test:unit": "node ./tools/run-unit-tests.js",
+    "test:coverage": "node ./tools/run-coverage.js",
+    "test:powershell": "powershell -NoProfile -ExecutionPolicy Bypass -File ./tools/run-powershell-tests.ps1",
+    "test:integration": "node ./tools/run-integration-tests.js",
     "test:smoke": "mocha \"test/smoke.test.js\"",
     "test:sanity": "mocha \"test/sanity.test.js\"",
     "test:regression": "mocha \"test/regression.test.js\"",
@@ -286,18 +334,26 @@
     "test:uat": "node ./test/uat.runner.js",
     "test:matrix": "node ./tools/run-test-matrix.js",
     "prepare:icons": "node ./tools/generate-icons.js",
-    "package:vsix": "npm run prepare:icons && npx vsce package --out blinter.vsix"
+    "setup:vendor": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/setup-vendor.ps1",
+    "package:vsix": "npm run prepare:icons && vsce package --out blinter.vsix",
+    "audit:dev": "npm audit --audit-level=high"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.90.0",
-    "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^2.1.0",
-    "eslint": "^9.36.0",
-    "fast-check": "^4.6.0",
-    "mocha": "^10.2.0",
-    "vsce": "^2.10.0"
+    "@types/vscode": "1.125.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "c8": "^12.0.0",
+    "eslint": "^10.8.0",
+    "fast-check": "^4.9.0",
+    "globals": "^17.9.0",
+    "mocha": "^11.8.0",
+    "ovsx": "^1.1.0",
+    "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "diff": "^8.0.3",
+    "serialize-javascript": "^7.0.7"
   }
 }

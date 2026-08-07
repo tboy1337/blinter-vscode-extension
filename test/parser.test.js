@@ -1,4 +1,5 @@
 const assert = require('assert');
+const path = require('path');
 const { parseBlinterOutput } = require('../lib/parser');
 
 describe('Parser tests', () => {
@@ -69,5 +70,60 @@ Line 1: BAT extension used instead of CMD for newer Windows (S007)
         assert.strictEqual(issues[0].severity, 'warning');
         assert.strictEqual(issues[0].code, 'SEC001');
         assert.strictEqual(issues[0].line, 9);
+    });
+
+    it('keeps lint and debug severity parity for detailed lines', () => {
+        const { analyzeLine } = require('../lib/analysis');
+        const line = 'Line 4: Prefer .cmd extension for modern systems (S007)';
+        const batch = parseBlinterOutput(line)[0];
+        const stream = analyzeLine(line, {
+            defaultFile: 'C:\\test.cmd',
+            variableIndex: new Map()
+        }).issues[0];
+        assert.strictEqual(batch.severity, stream.severity);
+    });
+
+    it('defaults malformed line numbers to 1', () => {
+        const { parseLine, safeLineNumber } = require('../lib/issueParser');
+        assert.strictEqual(safeLineNumber('not-a-number'), 1);
+        assert.strictEqual(safeLineNumber(0), 1);
+        assert.strictEqual(safeLineNumber(-3), 1);
+        assert.strictEqual(safeLineNumber('12'), 12);
+
+        const parsed = parseLine('C:\\test.cmd:not-a-line: warning: Something happened');
+        assert.strictEqual(parsed, undefined);
+    });
+
+    it('classifies lint issues with the same criticality rules as debug mode', () => {
+        const { createIssue } = require('../lib/analysis');
+        const styleWarning = createIssue({
+            severity: 'warning',
+            message: 'Prefer .cmd extension for modern systems',
+            filePath: 'C:\\test.cmd',
+            lineNumber: 4,
+            code: 'S007',
+            variableIndex: new Map()
+        });
+        const undefinedVariable = createIssue({
+            severity: 'warning',
+            message: "Undefined variable 'MISSING'",
+            filePath: 'C:\\test.cmd',
+            lineNumber: 8,
+            code: 'W001',
+            variableIndex: new Map()
+        });
+
+        assert.strictEqual(styleWarning.isCritical, false);
+        assert.strictEqual(undefinedVariable.isCritical, true);
+    });
+
+    it('preserves filePath from parseOutput context for detailed headers', () => {
+        const stdout = 'Line 1: sample issue (E001)';
+        const issues = parseBlinterOutput(stdout, {
+            workspaceRoot: 'C:\\ws',
+            defaultFile: 'C:\\ws\\main.cmd'
+        });
+        assert.strictEqual(issues.length, 1);
+        assert.strictEqual(issues[0].filePath, path.normalize('C:\\ws\\main.cmd'));
     });
 });

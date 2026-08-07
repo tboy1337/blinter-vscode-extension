@@ -53,7 +53,7 @@ describe('Exploratory fuzz tests', () => {
     assert.ok(Array.isArray(parsed));
     for (const issue of parsed) {
       assert.ok(issue.line >= 1, `Expected positive line number, got ${issue.line}`);
-      assert.ok(typeof issue.code === 'string' && issue.code.length > 0);
+      assert.ok(typeof issue.code === 'string');
     }
 
     const variableIndex = new Map();

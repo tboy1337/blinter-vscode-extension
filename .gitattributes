@@ -1,0 +1,47 @@
+# Normalize text files and let Git choose sensible defaults.
+* text=auto
+
+# Application source (LF — standard for JS/Node/VS Code extensions).
+*.js text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.svg text eol=lf
+*.xml text eol=lf
+
+# CI and editor config.
+*.yml text eol=lf
+*.yaml text eol=lf
+.editorconfig text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.vscodeignore text eol=lf
+
+# Documentation and plain text.
+*.txt text eol=lf
+
+# Windows batch and PowerShell (CRLF — required for reliable CMD execution).
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Unix shell scripts, if added later.
+*.sh text eol=lf
+
+# Binary assets and packages.
+*.png binary
+*.ico binary
+*.exe binary
+*.vsix binary
+*.zip binary
+*.7z binary
+
+# Reduce noisy lockfile merge conflicts.
+package-lock.json merge=union
+
+# Keep language stats focused on extension source.
+vendor/** linguist-vendored
+icons/** linguist-generated
+test/reports/** linguist-generated

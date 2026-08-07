@@ -1,32 +1,52 @@
+const fs = require('fs');
 const path = require('path');
 const Mocha = require('mocha');
-const glob = require('glob');
+const { ensureIntegrationSampleFile } = require('../support/integration-fixtures');
+
+function collectTestFiles(directory) {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectTestFiles(fullPath));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith('.test.js')) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
 
 function run() {
-  // Create the mocha test
+  const repoRoot = path.resolve(__dirname, '..', '..');
+  ensureIntegrationSampleFile(repoRoot);
+
   const mocha = new Mocha({
     ui: 'bdd',
     color: true
   });
 
-  // Register both BDD and TDD interfaces so tests can use either `describe/it` or `suite/test`.
-  // This directly invokes Mocha's interface installers to set globals inside the extension host.
   try {
     require('mocha/lib/interfaces/bdd')(mocha.suite);
     require('mocha/lib/interfaces/tdd')(mocha.suite);
   } catch {
-    // Fallback: alias describe/it to suite/test if interfaces cannot be loaded
-    if (typeof global.describe === 'function') global.suite = global.describe;
-    if (typeof global.it === 'function') global.test = global.it;
+    if (typeof global.describe === 'function') {global.suite = global.describe;}
+    if (typeof global.it === 'function') {global.test = global.it;}
   }
 
   const testsRoot = path.resolve(__dirname, '..');
+  let files = collectTestFiles(testsRoot);
+  if (process.env.BLINTER_INTEGRATION_ONLY === '1') {
+    files = files.filter((filePath) => /integration|bugfix-auto-focus/.test(filePath));
+  }
 
   return new Promise((resolve, reject) => {
     try {
-      // Use glob.sync to avoid callback vs ESM interop issues
-      const files = glob.sync('**/*.test.js', { cwd: testsRoot });
-      files.forEach(f => mocha.addFile(path.resolve(testsRoot, f)));
+      files.forEach((filePath) => mocha.addFile(filePath));
 
       mocha.run(failures => {
         if (failures > 0) {

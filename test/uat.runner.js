@@ -33,11 +33,11 @@ function assertCondition(condition, message) {
 function main() {
   const repoRoot = path.resolve(__dirname, '..');
   const packageJsonPath = path.join(repoRoot, 'package.json');
-  const extensionSourcePath = path.join(repoRoot, 'extension.js');
+  const outputViewSourcePath = path.join(repoRoot, 'lib', 'outputView.js');
   const checklistPath = path.join(repoRoot, 'test', 'UAT_CHECKLIST.md');
 
   const packageJson = readJson(packageJsonPath);
-  const extensionSource = fs.readFileSync(extensionSourcePath, 'utf8');
+  const outputViewSource = fs.readFileSync(outputViewSourcePath, 'utf8');
 
   const commands = (packageJson.contributes && packageJson.contributes.commands) || [];
   const commandIds = commands.map((entry) => entry.command);
@@ -56,11 +56,11 @@ function main() {
   }
 
   assertCondition(
-    extensionSource.includes('removeSuppressionsBtn'),
+    outputViewSource.includes('removeSuppressionsBtn'),
     'UAT failed: output view does not render the "Remove All Suppressions" button.'
   );
   assertCondition(
-    extensionSource.includes("command: 'removeSuppressions'"),
+    outputViewSource.includes("command: 'removeSuppressions'"),
     'UAT failed: output view does not wire the remove suppressions command handler.'
   );
   assertCondition(

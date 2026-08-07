@@ -2,6 +2,25 @@ const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
 const fc = require('fast-check');
+const { integrationSamplePath } = require('./support/integration-fixtures');
+const { pollUntil } = require('./support/poll');
+
+function readExtensionSources() {
+  const root = path.join(__dirname, '..');
+  const files = [
+    'extension.js',
+    'lib/controller.js',
+    'lib/outputView.js',
+    'lib/lintService.js',
+    'lib/commands.js',
+    'lib/quickFixes.js'
+  ];
+  return files.map((fileName) => fs.readFileSync(path.join(root, fileName), 'utf8')).join('\n');
+}
+
+function readOutputViewSource() {
+  return fs.readFileSync(path.join(__dirname, '..', 'lib', 'outputView.js'), 'utf8');
+}
 
 // `vscode` is only available when tests run inside the VS Code test runner.
 let vscode;
@@ -35,23 +54,20 @@ if (vscode) {
     test('Property 1: ensureVisible() should NOT contain workbench.view.debug command', async function () {
       this.timeout(5000);
 
-      // Read the extension.js source code
-      const extensionPath = path.join(__dirname, '..', 'extension.js');
-      const extensionSource = fs.readFileSync(extensionPath, 'utf8');
-
-      // Find the ensureVisible method by counting braces to get the complete method
-      const lines = extensionSource.split('\n');
-      const startIdx = lines.findIndex(l => l.includes('ensureVisible() {'));
+      // Read the output view source where ensureVisible is implemented
+      const outputViewSource = readOutputViewSource();
+      const lines = outputViewSource.split('\n');
+      const startIdx = lines.findIndex((l) => l.includes('ensureVisible() {'));
       
-      assert.ok(startIdx >= 0, 'ensureVisible() method should exist in extension.js');
+      assert.ok(startIdx >= 0, 'ensureVisible() method should exist in lib/outputView.js');
       
       // Count braces to find the end of the method
       let braceCount = 0;
       let endIdx = startIdx;
       for (let i = startIdx; i < lines.length; i++) {
         for (const char of lines[i]) {
-          if (char === '{') braceCount++;
-          if (char === '}') braceCount--;
+          if (char === '{') {braceCount++;}
+          if (char === '}') {braceCount--;}
         }
         if (braceCount === 0 && i > startIdx) {
           endIdx = i;
@@ -87,24 +103,26 @@ if (vscode) {
       this.timeout(10000);
 
       // Ensure extension is activated
-      const ext = vscode.extensions.getExtension('14ag.blinter');
-      if (ext) await ext.activate();
+      const ext = vscode.extensions.getExtension('tboy1337.blinter');
+      if (ext) {await ext.activate();}
 
-      // Use existing test file
-      const testFilePath = path.join(__dirname, '..', 'tmp', 'sample1.bat');
-      
-      if (!fs.existsSync(testFilePath)) {
-        assert.fail(`Test file not found: ${testFilePath}`);
-      }
+      const testFilePath = integrationSamplePath(__dirname);
 
       // Open the .bat file
       const document = await vscode.workspace.openTextDocument(testFilePath);
       await vscode.window.showTextDocument(document);
 
-      // Wait for extension to process the file open event
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await pollUntil(
+        () => {
+          const activeEditor = vscode.window.activeTextEditor;
+          if (activeEditor && activeEditor.document.uri.fsPath === testFilePath) {
+            return activeEditor;
+          }
+          return null;
+        },
+        { timeoutMs: 5000, label: 'active batch editor after open' }
+      );
 
-      // Verify the editor is still the active editor (focus not stolen)
       const activeEditor = vscode.window.activeTextEditor;
       assert.ok(activeEditor, 'An editor should be active');
       assert.strictEqual(
@@ -148,8 +166,7 @@ if (vscode) {
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
           // Read extension source to verify debug session behavior
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify that debug session start calls ensureVisible
           // Look for the onDidStartDebugSession handler
@@ -184,11 +201,10 @@ if (vscode) {
       // Property-based test: verify diagnostic generation logic exists
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify diagnostic collection and decoration logic exists
-          const hasDiagnosticCollection = extensionSource.includes('diagnosticCollection') ||
+          const hasDiagnosticCollection = extensionSource.includes('lintDiagnostics') ||
                                            extensionSource.includes('createDiagnosticCollection');
           const hasDecorationLogic = extensionSource.includes('refreshDecorations') ||
                                       extensionSource.includes('createDecorationType');
@@ -222,8 +238,7 @@ if (vscode) {
       // Property-based test: verify view registration
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify webview provider is registered
           const hasWebviewProvider = extensionSource.includes('BlinterOutputViewProvider');
@@ -254,8 +269,7 @@ if (vscode) {
       // Property-based test: verify provider registrations
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify hover provider and code action provider registrations
           const hasHoverProvider = extensionSource.includes('registerHoverProvider') ||
@@ -289,8 +303,7 @@ if (vscode) {
       // Property-based test: verify status bar logic
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify status bar item creation and update logic
           const hasStatusBarItem = extensionSource.includes('createStatusBarItem');
@@ -322,8 +335,7 @@ if (vscode) {
       // Property-based test: verify suppression comment logic
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify suppression comment handling
           const hasSuppressionLogic = extensionSource.includes('LINT:IGNORE') ||
@@ -355,11 +367,10 @@ if (vscode) {
       // Property-based test: verify core structure
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify key classes and functions exist
-          const hasBlinterClass = extensionSource.includes('class Blinter');
+          const hasBlinterClass = extensionSource.includes('class BlinterController');
           const hasWebviewProvider = extensionSource.includes('class BlinterOutputViewProvider');
           const hasActivateFunction = extensionSource.includes('function activate(');
           const hasDeactivateFunction = extensionSource.includes('function deactivate(');
@@ -389,8 +400,7 @@ if (vscode) {
       // Property-based test: verify configuration handling
       await fc.assert(
         fc.asyncProperty(fc.constant(true), async () => {
-          const extensionPath = path.join(__dirname, '..', 'extension.js');
-          const extensionSource = fs.readFileSync(extensionPath, 'utf8');
+          const extensionSource = readExtensionSources();
 
           // Verify configuration reading and event handlers
           const hasConfigHandling = extensionSource.includes('blinter.runOn') ||

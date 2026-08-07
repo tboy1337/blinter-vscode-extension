@@ -1,18 +1,24 @@
-# Vendor
+# Vendor (downloaded via npm run setup:vendor; not committed)
 vendor/
 
 # Extension artifacts
 *.txt
-*.vscode
+.vscode/
+out/
 *.vsix
 .kiro/
 releases/
 package0.json
 release_notes.md
+project_logs.log
+
+# Generated test artifacts
+test/reports/
+tmp/
 
 ## exceptions
-!progress.txt
-!project.txt
+!docs/project-spec.md
 !todo.txt
-!vendor/version.txt
-@ts-nocheck
+node_modules
+.vscode-test/
+coverage/
