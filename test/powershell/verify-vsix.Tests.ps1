@@ -12,13 +12,14 @@ BeforeAll {
 
 Describe 'Resolve-VsixPath' {
     It 'returns the explicit path when it exists' {
-        $vsix = New-TemporaryFile
+        $vsix = Join-Path $TestDrive 'explicit.vsix'
+        New-Item -ItemType File -Path $vsix -Force | Out-Null
         try {
-            $result = Resolve-VsixPath -VsixPath $vsix.FullName -SearchRoot $TestDrive
-            $result | Should -Be $vsix.FullName
+            $result = Resolve-VsixPath -VsixPath $vsix -SearchRoot $TestDrive
+            $result | Should -Be $vsix
         }
         finally {
-            Remove-Item $vsix.FullName -Force -ErrorAction SilentlyContinue
+            Remove-Item $vsix -Force -ErrorAction SilentlyContinue
         }
     }
 
