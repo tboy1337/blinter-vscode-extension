@@ -1,4 +1,5 @@
 const assert = require('assert');
+const cp = require('child_process');
 
 const { buildArgs, getExePath } = require('../lib/blinterRunner');
 const { parseBlinterOutput } = require('../lib/parser');
@@ -50,12 +51,23 @@ describe('Smoke tests', () => {
   });
 
   it('resolves system blinter command when configured', () => {
-    const result = findBlinterExecutable(
-      'C:\\repo\\blinter-vscode-extension',
-      'win32',
-      () => false,
-      { useSystemBlinter: true }
-    );
-    assert.strictEqual(result, 'blinter.exe');
+    const originalSpawnSync = cp.spawnSync;
+    cp.spawnSync = (cmd, args) => {
+      if (cmd === 'where' && args[0] === 'blinter.exe') {
+        return { status: 0, stdout: 'C:\\Tools\\blinter.exe\n' };
+      }
+      return originalSpawnSync(cmd, args);
+    };
+    try {
+      const result = findBlinterExecutable(
+        'C:\\repo\\blinter-vscode-extension',
+        'win32',
+        () => false,
+        { useSystemBlinter: true }
+      );
+      assert.strictEqual(result, 'blinter.exe');
+    } finally {
+      cp.spawnSync = originalSpawnSync;
+    }
   });
 });

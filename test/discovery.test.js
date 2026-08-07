@@ -1,5 +1,6 @@
 const assert = require('assert');
 const path = require('path');
+const cp = require('child_process');
 const { findBlinterExecutable } = require('../lib/discovery');
 
 describe('Discovery tests', () => {
@@ -29,10 +30,21 @@ describe('Discovery tests', () => {
     assert.strictEqual(res, expected);
   });
 
-  it('returns blinter.exe when useSystemBlinter is enabled and no bundled binary exists', () => {
+  it('returns blinter.exe when useSystemBlinter is enabled and executable is on PATH', () => {
     const fakeExists = () => false;
-    const res = findBlinterExecutable('root', 'win32', fakeExists, { useSystemBlinter: true });
-    assert.strictEqual(res, 'blinter.exe');
+    const originalSpawnSync = cp.spawnSync;
+    cp.spawnSync = (cmd, args) => {
+      if (cmd === 'where' && args[0] === 'blinter.exe') {
+        return { status: 0, stdout: 'C:\\Tools\\blinter.exe\n' };
+      }
+      return originalSpawnSync(cmd, args);
+    };
+    try {
+      const res = findBlinterExecutable('root', 'win32', fakeExists, { useSystemBlinter: true });
+      assert.strictEqual(res, 'blinter.exe');
+    } finally {
+      cp.spawnSync = originalSpawnSync;
+    }
   });
 
   it('returns null when no executable present', () => {
