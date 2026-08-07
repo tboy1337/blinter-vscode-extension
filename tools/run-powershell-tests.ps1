@@ -19,10 +19,8 @@ if (-not (Test-Path $reportsDir)) {
     New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null
 }
 
-$fixturesDir = Join-Path $repoRoot 'test\powershell\fixtures'
-if (-not (Test-Path (Join-Path $fixturesDir 'valid-extension.vsix'))) {
-    & (Join-Path $repoRoot 'test\powershell\build-fixtures.ps1')
-}
+# Always rebuild so fixtures stay aligned when lib/*.js modules are added or removed.
+& (Join-Path $repoRoot 'test\powershell\build-fixtures.ps1')
 
 $config = New-PesterConfiguration
 $config.Run.Path = Join-Path $repoRoot 'test\powershell'

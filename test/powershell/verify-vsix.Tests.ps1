@@ -3,11 +3,8 @@ BeforeAll {
     $scriptPath = Join-Path $repoRoot 'tools\verify-vsix.ps1'
     . $scriptPath -LoadOnly
 
-    $fixturesDir = Join-Path $PSScriptRoot 'fixtures'
-    $buildScript = Join-Path $PSScriptRoot 'build-fixtures.ps1'
-    if (-not (Test-Path (Join-Path $fixturesDir 'valid-extension.vsix'))) {
-        & $buildScript
-    }
+    # Always rebuild so fixtures stay aligned when lib/*.js modules are added or removed.
+    & (Join-Path $PSScriptRoot 'build-fixtures.ps1')
 }
 
 Describe 'Resolve-VsixPath' {
