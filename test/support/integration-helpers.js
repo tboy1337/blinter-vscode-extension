@@ -1,7 +1,9 @@
+const path = require('path');
 const vscode = require('vscode');
 const { pollUntil } = require('./poll');
 
-const EXTENSION_ID = 'tboy1337.blinter';
+const packageJson = require(path.join(__dirname, '..', '..', 'package.json'));
+const EXTENSION_ID = `${packageJson.publisher}.${packageJson.name}`;
 
 /** Commands expected after activation in BLINTER_TEST_MODE. */
 const CORE_COMMANDS = [

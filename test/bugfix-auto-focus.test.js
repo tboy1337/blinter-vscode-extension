@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const fc = require('fast-check');
 const { integrationSamplePath } = require('./support/integration-fixtures');
+const { EXTENSION_ID } = require('./support/integration-helpers');
 const { pollUntil } = require('./support/poll');
 
 function readExtensionSources() {
@@ -103,7 +104,7 @@ if (vscode) {
       this.timeout(10000);
 
       // Ensure extension is activated
-      const ext = vscode.extensions.getExtension('tboy1337.blinter');
+      const ext = vscode.extensions.getExtension(EXTENSION_ID);
       if (ext) {await ext.activate();}
 
       const testFilePath = integrationSamplePath(__dirname);
